@@ -1,0 +1,208 @@
+openapi: 3.1.0
+info:
+  title: Simulation Service API
+  version: 0.1.0
+  description: External simulation service contract for the operator trainer MVP.
+servers:
+  - url: http://simulation-service:8080
+security:
+  - bearerAuth: []
+paths:
+  /v1/sessions:
+    post:
+      operationId: createSession
+      summary: Create simulation session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "200":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSessionResponse"
+        "503":
+          description: Simulation service unavailable
+  /v1/sessions/{session_id}/state:
+    get:
+      operationId: getState
+      summary: Get authoritative state snapshot
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationState"
+        "404":
+          description: Session not found
+  /v1/sessions/{session_id}/commands:
+    post:
+      operationId: sendCommand
+      summary: Send operator command
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommandRequest"
+      responses:
+        "200":
+          description: Command accepted or rejected by simulation service
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandResponse"
+        "404":
+          description: Session not found
+  /v1/sessions/{session_id}/stop:
+    post:
+      operationId: stopSession
+      summary: Stop simulation session
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "204":
+          description: Session stopped
+        "404":
+          description: Session not found
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    CreateSessionRequest:
+      type: object
+      required: [simulator_id, operator_id, metadata]
+      properties:
+        simulator_id:
+          type: string
+          example: boiler-001
+        operator_id:
+          type: string
+          format: uuid
+        metadata:
+          type: object
+          required: [local_session_id]
+          properties:
+            local_session_id:
+              type: string
+              format: uuid
+    CreateSessionResponse:
+      type: object
+      required: [session_id, status]
+      properties:
+        session_id:
+          type: string
+        status:
+          type: string
+          enum: [active, failed]
+        state:
+          $ref: "#/components/schemas/SimulationState"
+    SimulationState:
+      type: object
+      required: [revision, simulation_time_ms, boiler, equipment, alarms]
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+        simulation_time_ms:
+          type: integer
+          minimum: 0
+        boiler:
+          $ref: "#/components/schemas/BoilerState"
+        equipment:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/EquipmentState"
+        alarms:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alarm"
+    BoilerState:
+      type: object
+      required: [temperature_c, pressure_bar, status]
+      properties:
+        temperature_c:
+          type: number
+        pressure_bar:
+          type: number
+        status:
+          type: string
+          enum: [idle, running, fault, unavailable]
+    EquipmentState:
+      type: object
+      required: [status, flow_kg_h]
+      properties:
+        status:
+          type: string
+          enum: [stopped, starting, running, stopping, fault, unavailable]
+        flow_kg_h:
+          type: number
+    Alarm:
+      type: object
+      required: [code, severity, message, active]
+      properties:
+        code:
+          type: string
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        message:
+          type: string
+        active:
+          type: boolean
+    CommandRequest:
+      type: object
+      required: [command_id, equipment_id, action, payload]
+      properties:
+        command_id:
+          type: string
+          format: uuid
+        equipment_id:
+          type: string
+          enum: [steam_supply_pump, steam_exhaust_pump]
+        action:
+          type: string
+          enum: [start, stop]
+        payload:
+          type: object
+        expected_revision:
+          type: integer
+          minimum: 0
+    CommandResponse:
+      type: object
+      required: [command_id, status]
+      properties:
+        command_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [accepted, rejected]
+        code:
+          type: string
+        message:
+          type: string

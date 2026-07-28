@@ -1,0 +1,24 @@
+{
+  "session_id": "external-session-123",
+  "status": "active",
+  "state": {
+    "revision": 1,
+    "simulation_time_ms": 0,
+    "boiler": {
+      "temperature_c": 100.0,
+      "pressure_bar": 1.0,
+      "status": "idle"
+    },
+    "equipment": {
+      "steam_supply_pump": {
+        "status": "stopped",
+        "flow_kg_h": 0
+      },
+      "steam_exhaust_pump": {
+        "status": "stopped",
+        "flow_kg_h": 0
+      }
+    },
+    "alarms": []
+  }
+}
