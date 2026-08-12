@@ -1,12 +1,15 @@
-import { Box, Button, Stack, Typography } from "@mui/material";
+import { useEffect, useRef, useState } from "react";
+import { Box, Button, Slider, Stack, Typography } from "@mui/material";
 
 import type { SimulationState } from "../../entities/simulation/api/types";
-import type { OilPumpAction, OilPumpId } from "./model/useOilHeatingRuntime";
+import type { OilPumpAction, OilPumpId, OilRegulatorId } from "./model/useOilHeatingRuntime";
 
 interface OilHeatingSchemeProps {
   state: SimulationState | null;
-  onCommand: (equipmentId: OilPumpId, action: OilPumpAction) => void;
+  onPumpCommand: (equipmentId: OilPumpId, action: OilPumpAction) => void;
+  onRegulatorCommand: (equipmentId: OilRegulatorId, value: number) => Promise<void>;
   isCommandPending: (equipmentId: OilPumpId, action: OilPumpAction) => boolean;
+  isRegulatorCommandPending: (equipmentId: OilRegulatorId) => boolean;
 }
 
 interface PumpPosition {
@@ -19,7 +22,7 @@ interface PumpPosition {
 
 interface RegulatorLine {
   y: number;
-  id: "FRC404" | "FRC405" | "FRC406";
+  id: OilRegulatorId;
   label: string;
   exchangers: string;
 }
@@ -60,12 +63,12 @@ function sensorValue(state: SimulationState | null, key: string): number | null 
   return readNumber(processSection(state, "sensors")[key]);
 }
 
-function regulatorValue(
-  state: SimulationState | null,
-  regulatorId: string,
-  key: "current" | "valve",
-): number | null {
-  return readNumber(readRecord(processSection(state, "regulators"), regulatorId)[key]);
+function regulatorValue(state: SimulationState | null, regulatorId: OilRegulatorId): number | null {
+  return readNumber(readRecord(processSection(state, "regulators"), regulatorId).valve);
+}
+
+function outputValue(state: SimulationState | null, key: string): number | null {
+  return readNumber(processSection(state, "installation_output")[key]);
 }
 
 function formatNumber(value: number | null, digits = 1): string {
@@ -184,18 +187,140 @@ function PumpActionButton({
   );
 }
 
+interface RegulatorControlProps {
+  line: RegulatorLine;
+  state: SimulationState | null;
+  value: number;
+  onStartEdit: (equipmentId: OilRegulatorId) => void;
+  onChange: (equipmentId: OilRegulatorId, value: number) => void;
+  onApply: (equipmentId: OilRegulatorId, value: number) => void;
+  pending: boolean;
+}
+
+function RegulatorControl({
+  line,
+  state,
+  value,
+  onStartEdit,
+  onChange,
+  onApply,
+  pending,
+}: RegulatorControlProps): JSX.Element {
+  const currentValue = regulatorValue(state, line.id);
+  const normalizedValue = Math.round(value);
+  const changed = currentValue === null || normalizedValue !== Math.round(currentValue);
+
+  return (
+    <Box
+      data-testid={`regulator-${line.id}`}
+      sx={{
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: 1,
+        minWidth: 0,
+        p: 1.5,
+      }}
+    >
+      <Stack alignItems="center" direction="row" justifyContent="space-between" spacing={1}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography fontWeight={700} variant="body2">
+            {line.label}
+          </Typography>
+          <Typography color="text.secondary" variant="caption">
+            клапан {formatNumber(currentValue, 0)}%
+          </Typography>
+        </Box>
+        <Button
+          size="small"
+          variant="contained"
+          onClick={() => onApply(line.id, normalizedValue)}
+          disabled={state === null || pending || !changed}
+          sx={{ minWidth: 96 }}
+        >
+          {pending ? "Ждём" : "Применить"}
+        </Button>
+      </Stack>
+      <Slider
+        aria-label={`${line.id} valve`}
+        value={normalizedValue}
+        min={0}
+        max={100}
+        step={1}
+        marks={[
+          { value: 0, label: "0%" },
+          { value: 50, label: "50%" },
+          { value: 100, label: "100%" },
+        ]}
+        valueLabelDisplay="auto"
+        disabled={state === null || pending}
+        onFocus={() => onStartEdit(line.id)}
+        onPointerDown={() => onStartEdit(line.id)}
+        onChange={(_, nextValue) => {
+          onChange(line.id, Array.isArray(nextValue) ? nextValue[0] : nextValue);
+        }}
+        sx={{ mt: 1.5 }}
+      />
+    </Box>
+  );
+}
+
 export function OilHeatingScheme({
   state,
-  onCommand,
+  onPumpCommand,
+  onRegulatorCommand,
   isCommandPending,
+  isRegulatorCommandPending,
 }: OilHeatingSchemeProps): JSX.Element {
+  const [draftRegulators, setDraftRegulators] = useState<Record<OilRegulatorId, number>>({
+    FRC404: 0,
+    FRC405: 0,
+    FRC406: 0,
+  });
+  const dirtyRegulatorsRef = useRef<Record<OilRegulatorId, boolean>>({
+    FRC404: false,
+    FRC405: false,
+    FRC406: false,
+  });
   const totalFlow = pumps.reduce((sum, pump) => sum + pumpFlow(state, pump.id), 0);
   const temperature = state?.boiler.temperature_c;
   const pressure = state?.boiler.pressure_bar;
   const inletTemperature = sensorValue(state, "TR5K3T");
   const density = sensorValue(state, "QR5K3D");
+  const pumpOutletFlow = sensorValue(state, "FYQR117");
   const ktcPressure = sensorValue(state, "PRA351");
+  const outputFlow = outputValue(state, "oil_flow_exit");
   const rawRows = processRows(state);
+
+  useEffect(() => {
+    setDraftRegulators((current) => {
+      const next = { ...current };
+      for (const line of regulatorLines) {
+        const value = regulatorValue(state, line.id);
+        if (value !== null && !dirtyRegulatorsRef.current[line.id] && !isRegulatorCommandPending(line.id)) {
+          next[line.id] = value;
+        }
+      }
+      return next;
+    });
+  }, [isRegulatorCommandPending, state]);
+
+  const startEditRegulator = (equipmentId: OilRegulatorId): void => {
+    dirtyRegulatorsRef.current[equipmentId] = true;
+  };
+
+  const updateDraftRegulator = (equipmentId: OilRegulatorId, value: number): void => {
+    dirtyRegulatorsRef.current[equipmentId] = true;
+    setDraftRegulators((current) => ({
+      ...current,
+      [equipmentId]: Math.min(100, Math.max(0, Math.round(value))),
+    }));
+  };
+
+  const applyDraftRegulator = (equipmentId: OilRegulatorId, value: number): void => {
+    void onRegulatorCommand(equipmentId, value).finally(() => {
+      dirtyRegulatorsRef.current[equipmentId] = false;
+    });
+  };
 
   return (
     <Box>
@@ -233,8 +358,8 @@ export function OilHeatingScheme({
           })}
 
           {regulatorLines.map((line) => {
-            const current = regulatorValue(state, line.id, "current");
-            const valve = regulatorValue(state, line.id, "valve");
+            const valve = regulatorValue(state, line.id);
+            const capacity = valve === null ? null : 450 * valve / 100;
             return (
               <g key={line.label}>
                 <rect x="350" y={line.y - 35} width="104" height="70" rx="6" fill="#e8f5e9" stroke="#2e7d32" />
@@ -242,7 +367,7 @@ export function OilHeatingScheme({
                   {line.label}
                 </text>
                 <text x="402" y={line.y + 8} textAnchor="middle" fontSize="12" fill="#1b5e20">
-                  {formatNumber(current)} м3/ч
+                  до {formatNumber(capacity)} м3/ч
                 </text>
                 <text x="402" y={line.y + 25} textAnchor="middle" fontSize="12" fill="#1b5e20">
                   клапан {formatNumber(valve, 0)}%
@@ -272,6 +397,9 @@ export function OilHeatingScheme({
             <text x="910" y="230" textAnchor="middle" fontSize="13" fill="#607d8b">
               KTC PRA351: {formatNumber(ktcPressure)} кгс/см2
             </text>
+            <text x="910" y="246" textAnchor="middle" fontSize="13" fill="#607d8b">
+              Выход: {formatNumber(outputFlow)} м3/ч
+            </text>
           </g>
         </svg>
         {pumps.map((pump) => (
@@ -281,7 +409,7 @@ export function OilHeatingScheme({
             status={state?.equipment[pump.id]?.status}
             left={pump.buttonLeft}
             top={pump.buttonTop}
-            onCommand={onCommand}
+            onCommand={onPumpCommand}
             isCommandPending={isCommandPending}
           />
         ))}
@@ -289,9 +417,30 @@ export function OilHeatingScheme({
 
       <Stack spacing={1.5} sx={{ mt: 1.5 }}>
         <Typography color="text.secondary" variant="body2">
-          Суммарный расход: {totalFlow.toFixed(1)} т/ч. Входная температура: {formatNumber(inletTemperature)} C.
+          После насосов: {formatNumber(pumpOutletFlow)} м3/ч ({totalFlow.toFixed(1)} т/ч).
+          Выход блока: {formatNumber(outputFlow)} м3/ч. Входная температура: {formatNumber(inletTemperature)} C.
           Плотность: {formatNumber(density, 3)} г/см3.
         </Typography>
+        <Box
+          sx={{
+            display: "grid",
+            gap: 1.5,
+            gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" },
+          }}
+        >
+          {regulatorLines.map((line) => (
+            <RegulatorControl
+              key={line.id}
+              line={line}
+              state={state}
+              value={draftRegulators[line.id]}
+              onStartEdit={startEditRegulator}
+              onChange={updateDraftRegulator}
+              onApply={applyDraftRegulator}
+              pending={isRegulatorCommandPending(line.id)}
+            />
+          ))}
+        </Box>
         {rawRows.length > 0 && (
           <Box
             sx={{

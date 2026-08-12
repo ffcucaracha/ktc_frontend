@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from math import isfinite
 from typing import cast
 from uuid import UUID
 
@@ -27,6 +28,7 @@ from app.repositories.simulators import KTC_OIL_HEATING_EXTERNAL_ID
 
 KTC_EXTERNAL_SESSION_PREFIX = f"{KTC_OIL_HEATING_EXTERNAL_ID}:"
 KTC_PUMPS = ("H1A", "H1B", "H1V")
+KTC_REGULATORS = ("FRC404", "FRC405", "FRC406")
 KTC_ACTIONS = {
     ("H1A", "start"): "start_pump_H1A",
     ("H1A", "stop"): "stop_pump_H1A",
@@ -34,6 +36,9 @@ KTC_ACTIONS = {
     ("H1B", "stop"): "stop_pump_H1B",
     ("H1V", "start"): "start_pump_H1V",
     ("H1V", "stop"): "stop_pump_H1V",
+    ("FRC404", "set"): "FRC404",
+    ("FRC405", "set"): "FRC405",
+    ("FRC406", "set"): "FRC406",
 }
 KGF_CM2_TO_BAR = 0.980665
 
@@ -111,7 +116,7 @@ class KtcOilHeatingGateway:
         payload: dict[str, object],
         expected_revision: int | None,
     ) -> CommandResult:
-        del payload, expected_revision
+        del expected_revision
         if not external_session_id.startswith(KTC_EXTERNAL_SESSION_PREFIX):
             raise SimulationProtocolError
         ktc_action = KTC_ACTIONS.get((equipment_id, action))
@@ -123,10 +128,22 @@ class KtcOilHeatingGateway:
                 message="Команда недоступна для блока подогрева нефти",
             )
 
+        params = {"action": ktc_action}
+        if equipment_id in KTC_REGULATORS:
+            value = self._read_valve_percent(payload)
+            if value is None:
+                return CommandResult(
+                    command_id=command_id,
+                    status=CommandStatus.REJECTED,
+                    code="INVALID_REGULATOR_VALUE",
+                    message="Положение регулятора должно быть в диапазоне 0-100%",
+                )
+            params["value"] = str(value)
+
         await self._request(
             "POST",
             "/api/action/oilHeating",
-            params={"action": ktc_action},
+            params=params,
         )
         self._revision += 1
         return CommandResult(command_id=command_id, status=CommandStatus.ACCEPTED)
@@ -159,6 +176,7 @@ class KtcOilHeatingGateway:
         pumps = self._read_mapping(payload, "pumps")
         sensors = self._read_mapping(payload, "sensors")
         regulators = self._read_mapping(payload, "regulators")
+        installation_output = self._read_optional_mapping(payload, "installation_output")
 
         pump_states = {
             pump_id: self._read_bool(pumps, pump_id)
@@ -200,6 +218,7 @@ class KtcOilHeatingGateway:
                 "pumps": pumps,
                 "sensors": sensors,
                 "regulators": regulators,
+                "installation_output": installation_output,
             },
         )
 
@@ -210,6 +229,15 @@ class KtcOilHeatingGateway:
     @staticmethod
     def _read_mapping(payload: dict[str, object], field: str) -> dict[str, object]:
         value = payload.get(field)
+        if not isinstance(value, dict):
+            raise InvalidExternalPayloadError
+        return cast(dict[str, object], value)
+
+    @staticmethod
+    def _read_optional_mapping(payload: dict[str, object], field: str) -> dict[str, object]:
+        value = payload.get(field)
+        if value is None:
+            return {}
         if not isinstance(value, dict):
             raise InvalidExternalPayloadError
         return cast(dict[str, object], value)
@@ -227,3 +255,15 @@ class KtcOilHeatingGateway:
         if not isinstance(value, int | float) or isinstance(value, bool):
             raise InvalidExternalPayloadError
         return float(value)
+
+    @staticmethod
+    def _read_valve_percent(payload: dict[str, object]) -> int | None:
+        value = payload.get("value")
+        if not isinstance(value, int | float) or isinstance(value, bool):
+            return None
+        if not isfinite(float(value)):
+            return None
+        normalized = round(float(value))
+        if normalized < 0 or normalized > 100:
+            return None
+        return normalized

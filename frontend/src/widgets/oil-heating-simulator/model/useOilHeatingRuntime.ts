@@ -8,16 +8,21 @@ import {
 import type { SimulationState } from "../../../entities/simulation/api/types";
 import { simulationSessionsQueryKey } from "../../../entities/simulation/model/queries";
 import { ApiClientError } from "../../../shared/api/client";
+import { createUuidV4 } from "../../../shared/lib/uuid";
 
 type ConnectionStatus = "connected" | "disconnected";
 type CommandStatus = "pending" | "accepted" | "rejected" | "failed";
 export type OilPumpId = "H1A" | "H1B" | "H1V";
+export type OilRegulatorId = "FRC404" | "FRC405" | "FRC406";
+export type OilEquipmentId = OilPumpId | OilRegulatorId;
 export type OilPumpAction = "start" | "stop";
+export type OilRegulatorAction = "set";
+export type OilCommandAction = OilPumpAction | OilRegulatorAction;
 
 export interface OilCommandLogItem {
   commandId: string;
-  equipmentId: OilPumpId;
-  action: OilPumpAction;
+  equipmentId: OilEquipmentId;
+  action: OilCommandAction;
   status: CommandStatus;
   message: string;
 }
@@ -31,7 +36,9 @@ interface RuntimeState {
 
 interface RuntimeActions {
   sendPumpCommand: (equipmentId: OilPumpId, action: OilPumpAction) => Promise<void>;
+  sendRegulatorCommand: (equipmentId: OilRegulatorId, value: number) => Promise<void>;
   isCommandPending: (equipmentId: OilPumpId, action: OilPumpAction) => boolean;
+  isRegulatorCommandPending: (equipmentId: OilRegulatorId) => boolean;
 }
 
 const pollingIntervalMs = 2_000;
@@ -40,11 +47,8 @@ function commandMessage(equipmentId: OilPumpId, action: OilPumpAction): string {
   return `Насос ${equipmentId}: ${action === "start" ? "пуск" : "останов"}`;
 }
 
-function createCommandId(): string {
-  if (globalThis.crypto?.randomUUID !== undefined) {
-    return globalThis.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function regulatorCommandMessage(equipmentId: OilRegulatorId, value: number): string {
+  return `Регулятор ${equipmentId}: ${value}%`;
 }
 
 function normalizeError(error: unknown): string {
@@ -147,7 +151,7 @@ export function useOilHeatingRuntime(
         return;
       }
       pendingKeysRef.current.add(pendingKey);
-      const commandId = createCommandId();
+      const commandId = createUuidV4();
       const item: OilCommandLogItem = {
         commandId,
         equipmentId,
@@ -184,12 +188,68 @@ export function useOilHeatingRuntime(
     [addError, refreshSnapshot, sessionId, state?.revision, updateCommand],
   );
 
+  const sendRegulatorCommand = useCallback(
+    async (equipmentId: OilRegulatorId, value: number): Promise<void> => {
+      const normalizedValue = Math.round(value);
+      const pendingKey = `${equipmentId}:set`;
+      if (pendingKeysRef.current.has(pendingKey)) {
+        return;
+      }
+      pendingKeysRef.current.add(pendingKey);
+      const commandId = createUuidV4();
+      const item: OilCommandLogItem = {
+        commandId,
+        equipmentId,
+        action: "set",
+        status: "pending",
+        message: regulatorCommandMessage(equipmentId, normalizedValue),
+      };
+      setCommands((current) => [item, ...current].slice(0, 20));
+      try {
+        const response = await sendSimulationCommand(sessionId, {
+          command_id: commandId,
+          equipment_id: equipmentId,
+          action: "set",
+          payload: { value: normalizedValue },
+          expected_revision: state?.revision,
+        });
+        if (response.status === "rejected") {
+          updateCommand(commandId, "rejected", response.external_error_message ?? "Команда отклонена");
+          addError(response.external_error_message ?? "Команда отклонена");
+          return;
+        }
+        if (response.status === "failed") {
+          updateCommand(commandId, "failed", response.external_error_message ?? "Команда не выполнена");
+          addError(response.external_error_message ?? "Команда не выполнена");
+          return;
+        }
+        await refreshSnapshot();
+      } catch (error) {
+        const message = normalizeError(error);
+        updateCommand(commandId, "failed", message);
+        addError(message);
+      }
+    },
+    [addError, refreshSnapshot, sessionId, state?.revision, updateCommand],
+  );
+
   const isCommandPending = useCallback(
     (equipmentId: OilPumpId, action: OilPumpAction): boolean =>
       commands.some(
         (command) =>
           command.equipmentId === equipmentId &&
           command.action === action &&
+          command.status === "pending",
+      ),
+    [commands],
+  );
+
+  const isRegulatorCommandPending = useCallback(
+    (equipmentId: OilRegulatorId): boolean =>
+      commands.some(
+        (command) =>
+          command.equipmentId === equipmentId &&
+          command.action === "set" &&
           command.status === "pending",
       ),
     [commands],
@@ -202,8 +262,19 @@ export function useOilHeatingRuntime(
       commands,
       errors,
       sendPumpCommand,
+      sendRegulatorCommand,
       isCommandPending,
+      isRegulatorCommandPending,
     }),
-    [commands, connectionStatus, errors, isCommandPending, sendPumpCommand, state],
+    [
+      commands,
+      connectionStatus,
+      errors,
+      isCommandPending,
+      isRegulatorCommandPending,
+      sendPumpCommand,
+      sendRegulatorCommand,
+      state,
+    ],
   );
 }

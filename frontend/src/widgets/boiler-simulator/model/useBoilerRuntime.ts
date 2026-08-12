@@ -15,6 +15,7 @@ import {
 import { simulationSessionsQueryKey } from "../../../entities/simulation/model/queries";
 import { ApiClientError } from "../../../shared/api/client";
 import { getAccessToken } from "../../../shared/auth/authStore";
+import { createUuidV4 } from "../../../shared/lib/uuid";
 
 type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
 type CommandStatus = "pending" | "accepted" | "rejected" | "failed";
@@ -50,13 +51,6 @@ function wsBaseUrl(): string {
 function commandMessage(equipmentId: PumpId, action: PumpAction): string {
   const pump = equipmentId === "steam_supply_pump" ? "Насос подачи" : "Насос откачки";
   return `${pump}: ${action === "start" ? "запуск" : "останов"}`;
-}
-
-function createCommandId(): string {
-  if (globalThis.crypto?.randomUUID !== undefined) {
-    return globalThis.crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function normalizeError(error: unknown): string {
@@ -260,7 +254,7 @@ export function useBoilerRuntime(sessionId: string, initialState: SimulationStat
         return;
       }
       pendingKeysRef.current.add(pendingKey);
-      const commandId = createCommandId();
+      const commandId = createUuidV4();
       const item: CommandLogItem = {
         commandId,
         equipmentId,

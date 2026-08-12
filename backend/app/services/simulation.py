@@ -26,12 +26,18 @@ STEAM_EXHAUST_PUMP = "steam_exhaust_pump"
 KTC_PUMP_H1A = "H1A"
 KTC_PUMP_H1B = "H1B"
 KTC_PUMP_H1V = "H1V"
+KTC_REGULATOR_FRC404 = "FRC404"
+KTC_REGULATOR_FRC405 = "FRC405"
+KTC_REGULATOR_FRC406 = "FRC406"
 COMMAND_WHITELIST = {
     STEAM_SUPPLY_PUMP: {"start", "stop"},
     STEAM_EXHAUST_PUMP: {"start", "stop"},
     KTC_PUMP_H1A: {"start", "stop"},
     KTC_PUMP_H1B: {"start", "stop"},
     KTC_PUMP_H1V: {"start", "stop"},
+    KTC_REGULATOR_FRC404: {"set"},
+    KTC_REGULATOR_FRC405: {"set"},
+    KTC_REGULATOR_FRC406: {"set"},
 }
 
 

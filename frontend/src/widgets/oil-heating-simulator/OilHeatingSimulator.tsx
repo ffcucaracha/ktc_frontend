@@ -67,8 +67,10 @@ export function OilHeatingSimulator({
       <Paper elevation={0} sx={{ border: "1px solid", borderColor: "divider", p: 2 }}>
         <OilHeatingScheme
           state={runtime.state}
-          onCommand={(equipmentId, action) => void runtime.sendPumpCommand(equipmentId, action)}
+          onPumpCommand={(equipmentId, action) => void runtime.sendPumpCommand(equipmentId, action)}
+          onRegulatorCommand={runtime.sendRegulatorCommand}
           isCommandPending={runtime.isCommandPending}
+          isRegulatorCommandPending={runtime.isRegulatorCommandPending}
         />
       </Paper>
     </Stack>

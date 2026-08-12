@@ -86,7 +86,7 @@ export interface SimulationStateResponse {
 export interface SimulationCommandPayload {
   command_id: string;
   equipment_id: string;
-  action: "start" | "stop";
+  action: "start" | "stop" | "set";
   payload: Record<string, unknown>;
   expected_revision?: number;
 }

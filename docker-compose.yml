@@ -72,7 +72,8 @@ services:
   ktc-backend:
     build:
       context: ../ktc_backend
-    command: ["uvicorn", "app.main:app", "--app-dir", "/", "--host", "0.0.0.0", "--port", "8000"]
+      dockerfile: ../ktc_frontend/docker/ktc-backend.Dockerfile
+    command: ["uvicorn", "app.main:app", "--app-dir", "/app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "${KTC_HOST_PORT:-8001}:8000"
 
