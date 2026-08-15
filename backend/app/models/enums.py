@@ -24,3 +24,27 @@ class SimulationCommandStatus(StrEnum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"
     FAILED = "failed"
+
+
+class SimulationTimelineEventType(StrEnum):
+    SESSION_STARTED = "session.started"
+    SESSION_READY = "session.ready"
+    STATE_SNAPSHOT = "state.snapshot"
+    STATE_PATCH = "state.patch"
+    OPERATOR_COMMAND = "operator.command"
+    COMMAND_ACCEPTED = "command.accepted"
+    COMMAND_REJECTED = "command.rejected"
+    COMMAND_FAILED = "command.failed"
+    ALARM_RAISED = "alarm.raised"
+    ALARM_CLEARED = "alarm.cleared"
+    INTEGRATION_ERROR = "integration.error"
+    SESSION_COMPLETED = "session.completed"
+    SESSION_FAILED = "session.failed"
+
+
+class SimulationEventSource(StrEnum):
+    OPERATOR = "operator"
+    SIMULATION = "simulation"
+    SYSTEM = "system"
+    ASSESSMENT = "assessment"
+    AI = "ai"
