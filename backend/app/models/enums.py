@@ -19,17 +19,6 @@ class SimulationSessionStatus(StrEnum):
     FAILED = "failed"
 
 
-class TrainingSessionMode(StrEnum):
-    TRAINING = "training"
-    EXAM = "exam"
-
-
-class TrainingScenarioDifficulty(StrEnum):
-    BASIC = "basic"
-    MEDIUM = "medium"
-    ADVANCED = "advanced"
-
-
 class SimulationCommandStatus(StrEnum):
     PENDING = "pending"
     ACCEPTED = "accepted"
@@ -59,3 +48,26 @@ class SimulationEventSource(StrEnum):
     SYSTEM = "system"
     ASSESSMENT = "assessment"
     AI = "ai"
+
+
+class TrainingScenarioDifficulty(StrEnum):
+    BASIC = "basic"
+    MEDIUM = "medium"
+    ADVANCED = "advanced"
+
+
+class TrainingSessionMode(StrEnum):
+    TRAINING = "training"
+    EXAM = "exam"
+
+
+class OperatorErrorType(StrEnum):
+    WRONG_ACTION = "WRONG_ACTION"
+    LATE_ACTION = "LATE_ACTION"
+    MISSED_ACTION = "MISSED_ACTION"
+    WRONG_SEQUENCE = "WRONG_SEQUENCE"
+
+
+class OperatorErrorSource(StrEnum):
+    RULE = "rule"
+    ML = "ml"

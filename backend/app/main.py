@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.errors import configure_error_handlers
+from app.api.v1.endpoints.assessment import router as assessment_router
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.operators import router as operators_router
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(operators_router, prefix="/api/v1")
     app.include_router(simulation_router, prefix="/api/v1")
+    app.include_router(assessment_router, prefix="/api/v1")
     app.include_router(simulation_ws_router)
     return app
 
