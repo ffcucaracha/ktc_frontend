@@ -71,6 +71,14 @@ class SimulationSessionRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_active(self) -> list[SimulationSession]:
+        result = await self._session.execute(
+            select(SimulationSession)
+            .where(SimulationSession.status == SimulationSessionStatus.ACTIVE)
+            .order_by(SimulationSession.started_at.asc(), SimulationSession.id.asc()),
+        )
+        return list(result.scalars())
+
 
 class SimulationCommandRepository:
     def __init__(self, session: AsyncSession) -> None:

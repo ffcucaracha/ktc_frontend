@@ -49,6 +49,20 @@ class Settings(BaseSettings):
         default=10.0,
         validation_alias="SIMULATION_READ_TIMEOUT_SECONDS",
     )
+    simulation_telemetry_enabled: bool = Field(
+        default=True,
+        validation_alias="SIMULATION_TELEMETRY_ENABLED",
+    )
+    simulation_telemetry_interval_seconds: float = Field(
+        default=2.0,
+        gt=0,
+        validation_alias="SIMULATION_TELEMETRY_INTERVAL_SECONDS",
+    )
+    simulation_telemetry_discovery_interval_seconds: float = Field(
+        default=1.0,
+        gt=0,
+        validation_alias="SIMULATION_TELEMETRY_DISCOVERY_INTERVAL_SECONDS",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

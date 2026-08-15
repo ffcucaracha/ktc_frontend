@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import SimulationEvent, SimulationEventSource, SimulationTimelineEventType
@@ -53,14 +54,22 @@ class SimulationEventRepository:
             return None
 
         simulation_time_ms = state.get("simulation_time_ms")
-        return await self.create_event(
-            session_id=session_id,
-            event_type=SimulationTimelineEventType.STATE_SNAPSHOT,
-            source=SimulationEventSource.SIMULATION,
-            revision=revision,
-            simulation_time_ms=simulation_time_ms if isinstance(simulation_time_ms, int) else None,
-            payload=state,
-        )
+        try:
+            async with self._session.begin_nested():
+                return await self.create_event(
+                    session_id=session_id,
+                    event_type=SimulationTimelineEventType.STATE_SNAPSHOT,
+                    source=SimulationEventSource.SIMULATION,
+                    revision=revision,
+                    simulation_time_ms=(
+                        simulation_time_ms if isinstance(simulation_time_ms, int) else None
+                    ),
+                    payload=state,
+                )
+        except IntegrityError:
+            # Frontend polling, WebSocket processing and the telemetry collector may race on
+            # the same revision. The partial unique index is the final idempotency guard.
+            return None
 
     async def create_operator_command_event(
         self,
