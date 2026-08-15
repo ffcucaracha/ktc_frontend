@@ -3,7 +3,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models import SimulationCommandStatus, SimulationSessionStatus
+from app.models import (
+    SimulationCommandStatus,
+    SimulationSessionStatus,
+    TrainingScenarioDifficulty,
+    TrainingSessionMode,
+)
 
 
 class SimulatorResponse(BaseModel):
@@ -22,14 +27,35 @@ class SimulatorListResponse(BaseModel):
     items: list[SimulatorResponse]
 
 
+class TrainingScenarioResponse(BaseModel):
+    id: UUID
+    code: str
+    simulator_definition_id: UUID
+    name: str
+    description: str
+    difficulty: TrainingScenarioDifficulty
+    is_active: bool
+    config: dict[str, object]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TrainingScenarioListResponse(BaseModel):
+    items: list[TrainingScenarioResponse]
+
+
 class SimulationSessionCreateRequest(BaseModel):
     simulator_id: UUID
+    scenario_id: UUID | None = None
+    mode: TrainingSessionMode = TrainingSessionMode.TRAINING
 
 
 class SimulationSessionResponse(BaseModel):
     id: UUID
     operator_id: UUID
     simulator_definition_id: UUID
+    training_scenario_id: UUID | None
+    mode: TrainingSessionMode
     external_session_id: str | None
     status: SimulationSessionStatus
     started_at: datetime | None

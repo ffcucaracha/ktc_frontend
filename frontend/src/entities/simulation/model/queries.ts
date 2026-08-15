@@ -6,6 +6,7 @@ import {
   getSimulationState,
   getSimulator,
   listSimulators,
+  listTrainingScenarios,
   stopSimulationSession,
 } from "../api/simulationApi";
 import type { CreateSimulationSessionPayload } from "../api/types";
@@ -24,6 +25,14 @@ export function useSimulatorQuery(simulatorId: string) {
   return useQuery({
     queryKey: [...simulatorsQueryKey, simulatorId],
     queryFn: () => getSimulator(simulatorId),
+    enabled: simulatorId.length > 0,
+  });
+}
+
+export function useTrainingScenariosQuery(simulatorId: string) {
+  return useQuery({
+    queryKey: [...simulatorsQueryKey, simulatorId, "scenarios"],
+    queryFn: () => listTrainingScenarios(simulatorId),
     enabled: simulatorId.length > 0,
   });
 }

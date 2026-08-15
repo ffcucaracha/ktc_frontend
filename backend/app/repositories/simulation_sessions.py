@@ -9,6 +9,7 @@ from app.models import (
     SimulationSession,
     SimulationSessionStatus,
     SimulatorDefinition,
+    TrainingSessionMode,
 )
 
 
@@ -42,10 +43,14 @@ class SimulationSessionRepository:
         self,
         operator_id: UUID,
         simulator_definition_id: UUID,
+        training_scenario_id: UUID | None = None,
+        mode: TrainingSessionMode = TrainingSessionMode.TRAINING,
     ) -> SimulationSession:
         simulation_session = SimulationSession(
             operator_id=operator_id,
             simulator_definition_id=simulator_definition_id,
+            training_scenario_id=training_scenario_id,
+            mode=mode,
             status=SimulationSessionStatus.CREATING,
         )
         self._session.add(simulation_session)

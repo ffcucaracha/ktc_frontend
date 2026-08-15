@@ -1,4 +1,6 @@
 export type SimulationSessionStatus = "creating" | "active" | "stopping" | "completed" | "failed";
+export type TrainingSessionMode = "training" | "exam";
+export type TrainingScenarioDifficulty = "basic" | "medium" | "advanced";
 export type EquipmentStatus =
   | "stopped"
   | "starting"
@@ -33,10 +35,27 @@ export interface SimulatorListResponse {
   items: SimulatorDefinition[];
 }
 
+export interface TrainingScenario {
+  id: string;
+  code: string;
+  simulator_definition_id: string;
+  name: string;
+  description: string;
+  difficulty: TrainingScenarioDifficulty;
+  is_active: boolean;
+  config: Record<string, unknown>;
+}
+
+export interface TrainingScenarioListResponse {
+  items: TrainingScenario[];
+}
+
 export interface SimulationSession {
   id: string;
   operator_id: string;
   simulator_definition_id: string;
+  training_scenario_id: string | null;
+  mode: TrainingSessionMode;
   external_session_id: string | null;
   status: SimulationSessionStatus;
   started_at: string | null;
@@ -50,6 +69,8 @@ export interface SimulationSession {
 
 export interface CreateSimulationSessionPayload {
   simulator_id: string;
+  scenario_id?: string;
+  mode?: TrainingSessionMode;
 }
 
 export interface BoilerState {

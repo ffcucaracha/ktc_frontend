@@ -19,6 +19,17 @@ class SimulationSessionStatus(StrEnum):
     FAILED = "failed"
 
 
+class TrainingSessionMode(StrEnum):
+    TRAINING = "training"
+    EXAM = "exam"
+
+
+class TrainingScenarioDifficulty(StrEnum):
+    BASIC = "basic"
+    MEDIUM = "medium"
+    ADVANCED = "advanced"
+
+
 class SimulationCommandStatus(StrEnum):
     PENDING = "pending"
     ACCEPTED = "accepted"

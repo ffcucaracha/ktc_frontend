@@ -27,6 +27,8 @@ from app.schemas.simulation import (
     SimulationStateResponse,
     SimulatorListResponse,
     SimulatorResponse,
+    TrainingScenarioListResponse,
+    TrainingScenarioResponse,
 )
 from app.services.simulation import (
     DuplicateCommandError,
@@ -36,6 +38,7 @@ from app.services.simulation import (
     SimulationSessionNotFoundError,
     SimulatorNotFoundError,
     StaleStateRevisionError,
+    TrainingScenarioNotFoundError,
 )
 
 router = APIRouter(tags=["simulation"])
@@ -44,6 +47,14 @@ ws_router = APIRouter(tags=["simulation-websocket"])
 
 def simulator_not_found_error() -> ApiError:
     return ApiError(status.HTTP_404_NOT_FOUND, "SIMULATOR_NOT_FOUND", "Тренажёр не найден")
+
+
+def training_scenario_not_found_error() -> ApiError:
+    return ApiError(
+        status.HTTP_404_NOT_FOUND,
+        "TRAINING_SCENARIO_NOT_FOUND",
+        "Учебный сценарий не найден или недоступен для этого тренажёра",
+    )
 
 
 def session_not_found_error() -> ApiError:
@@ -112,6 +123,26 @@ async def get_simulator(
     return SimulatorResponse.model_validate(simulator)
 
 
+@router.get(
+    "/simulators/{simulator_id}/scenarios",
+    response_model=TrainingScenarioListResponse,
+)
+async def list_training_scenarios(
+    simulator_id: UUID,
+    operator: Annotated[User, Depends(require_operator)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    gateway: Annotated[SimulationGateway, Depends(get_simulation_gateway)],
+) -> TrainingScenarioListResponse:
+    del operator
+    try:
+        scenarios = await SimulationService(session, gateway).list_training_scenarios(simulator_id)
+    except SimulatorNotFoundError as exc:
+        raise simulator_not_found_error() from exc
+    return TrainingScenarioListResponse(
+        items=[TrainingScenarioResponse.model_validate(item) for item in scenarios]
+    )
+
+
 @router.post(
     "/simulation-sessions",
     response_model=SimulationSessionResponse,
@@ -127,9 +158,13 @@ async def create_simulation_session(
         simulation_session = await SimulationService(session, gateway).create_session(
             operator_id=operator.id,
             simulator_id=payload.simulator_id,
+            training_scenario_id=payload.scenario_id,
+            mode=payload.mode,
         )
     except SimulatorNotFoundError as exc:
         raise simulator_not_found_error() from exc
+    except TrainingScenarioNotFoundError as exc:
+        raise training_scenario_not_found_error() from exc
     return SimulationSessionResponse.model_validate(simulation_session)
 
 

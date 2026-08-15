@@ -8,6 +8,8 @@ import type {
   SimulationStateResponse,
   SimulatorDefinition,
   SimulatorListResponse,
+  TrainingScenario,
+  TrainingScenarioListResponse,
 } from "./types";
 
 export async function listSimulators(): Promise<SimulatorDefinition[]> {
@@ -17,6 +19,14 @@ export async function listSimulators(): Promise<SimulatorDefinition[]> {
 
 export async function getSimulator(simulatorId: string): Promise<SimulatorDefinition> {
   return apiRequest<SimulatorDefinition>(`/simulators/${simulatorId}`, { auth: true });
+}
+
+export async function listTrainingScenarios(simulatorId: string): Promise<TrainingScenario[]> {
+  const response = await apiRequest<TrainingScenarioListResponse>(
+    `/simulators/${simulatorId}/scenarios`,
+    { auth: true },
+  );
+  return response.items;
 }
 
 export async function createSimulationSession(

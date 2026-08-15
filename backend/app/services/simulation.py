@@ -16,6 +16,8 @@ from app.models import (
     SimulationSessionStatus,
     SimulationTimelineEventType,
     SimulatorDefinition,
+    TrainingScenario,
+    TrainingSessionMode,
 )
 from app.repositories.simulation_events import SimulationEventRepository
 from app.repositories.simulation_sessions import (
@@ -23,6 +25,7 @@ from app.repositories.simulation_sessions import (
     SimulationSessionRepository,
     SimulatorCatalogRepository,
 )
+from app.repositories.training_scenarios import TrainingScenarioRepository
 
 STEAM_SUPPLY_PUMP = "steam_supply_pump"
 STEAM_EXHAUST_PUMP = "steam_exhaust_pump"
@@ -45,6 +48,10 @@ COMMAND_WHITELIST = {
 
 
 class SimulatorNotFoundError(Exception):
+    pass
+
+
+class TrainingScenarioNotFoundError(Exception):
     pass
 
 
@@ -82,6 +89,7 @@ class SimulationService:
         self._sessions = SimulationSessionRepository(session)
         self._commands = SimulationCommandRepository(session)
         self._events = SimulationEventRepository(session)
+        self._training_scenarios = TrainingScenarioRepository(session)
 
     async def list_simulators(self) -> list[SimulatorDefinition]:
         return await self._catalog.list_active()
@@ -92,11 +100,32 @@ class SimulationService:
             raise SimulatorNotFoundError
         return simulator
 
-    async def create_session(self, operator_id: UUID, simulator_id: UUID) -> SimulationSession:
+    async def list_training_scenarios(self, simulator_id: UUID) -> list[TrainingScenario]:
+        await self.get_simulator(simulator_id)
+        return await self._training_scenarios.list_active_for_simulator(simulator_id)
+
+    async def create_session(
+        self,
+        operator_id: UUID,
+        simulator_id: UUID,
+        training_scenario_id: UUID | None = None,
+        mode: TrainingSessionMode = TrainingSessionMode.TRAINING,
+    ) -> SimulationSession:
         simulator = await self.get_simulator(simulator_id)
+        scenario: TrainingScenario | None = None
+        if training_scenario_id is not None:
+            scenario = await self._training_scenarios.get_active_for_simulator(
+                training_scenario_id,
+                simulator.id,
+            )
+            if scenario is None:
+                raise TrainingScenarioNotFoundError
+
         local_session = await self._sessions.create(
             operator_id=operator_id,
             simulator_definition_id=simulator.id,
+            training_scenario_id=scenario.id if scenario is not None else None,
+            mode=mode,
         )
         await self._session.commit()
 
@@ -130,6 +159,9 @@ class SimulationService:
                 "status": SimulationSessionStatus.ACTIVE,
                 "external_session_id": external_session.session_id,
                 "simulator_id": str(simulator.id),
+                "training_scenario_id": str(scenario.id) if scenario is not None else None,
+                "training_scenario_code": scenario.code if scenario is not None else None,
+                "mode": mode,
             },
         )
         if external_session.state is not None:

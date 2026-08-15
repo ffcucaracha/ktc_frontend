@@ -5,11 +5,14 @@ import {
   Card,
   CardContent,
   Chip,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
   Typography,
 } from "@mui/material";
-import { useRef } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -19,7 +22,9 @@ import {
 import {
   useCreateSimulationSessionMutation,
   useSimulatorQuery,
+  useTrainingScenariosQuery,
 } from "../../entities/simulation/model/queries";
+import type { TrainingSessionMode } from "../../entities/simulation/api/types";
 import { ErrorView } from "../../shared/ui/ErrorView";
 import { LoadingView } from "../../shared/ui/LoadingView";
 
@@ -29,8 +34,17 @@ export function OperatorSimulatorDetailPage(): JSX.Element {
   const navigate = useNavigate();
   const creationInFlightRef = useRef(false);
   const [sessionFailure, setSessionFailure] = useState<string | null>(null);
+  const [selectedScenarioId, setSelectedScenarioId] = useState("");
+  const [mode, setMode] = useState<TrainingSessionMode>("training");
   const simulatorQuery = useSimulatorQuery(resolvedSimulatorId);
+  const scenariosQuery = useTrainingScenariosQuery(resolvedSimulatorId);
   const createSessionMutation = useCreateSimulationSessionMutation();
+
+  useEffect(() => {
+    if (selectedScenarioId.length === 0 && scenariosQuery.data?.length) {
+      setSelectedScenarioId(scenariosQuery.data[0].id);
+    }
+  }, [scenariosQuery.data, selectedScenarioId]);
 
   if (simulatorId === undefined) {
     return <ErrorView title="Тренажёр не найден" message="Некорректный адрес страницы." />;
@@ -51,7 +65,13 @@ export function OperatorSimulatorDetailPage(): JSX.Element {
   }
 
   const simulator = simulatorQuery.data;
-  const createDisabled = createSessionMutation.isPending || !simulator.is_active;
+  const scenarios = scenariosQuery.data ?? [];
+  const selectedScenario = scenarios.find((item) => item.id === selectedScenarioId);
+  const createDisabled =
+    createSessionMutation.isPending ||
+    !simulator.is_active ||
+    scenariosQuery.isLoading ||
+    (scenarios.length > 0 && selectedScenarioId.length === 0);
 
   return (
     <Stack spacing={3}>
@@ -81,6 +101,9 @@ export function OperatorSimulatorDetailPage(): JSX.Element {
       {!simulator.is_active ? (
         <Alert severity="warning">Тренажёр временно недоступен для запуска.</Alert>
       ) : null}
+      {scenariosQuery.isError ? (
+        <Alert severity="warning">Не удалось загрузить учебные сценарии.</Alert>
+      ) : null}
       {sessionFailure !== null ? <Alert severity="error">{sessionFailure}</Alert> : null}
       {createSessionMutation.error !== null ? (
         <Alert severity="error">{describeSimulationError(createSessionMutation.error)}</Alert>
@@ -93,8 +116,49 @@ export function OperatorSimulatorDetailPage(): JSX.Element {
               Подготовка тренировки
             </Typography>
             <Typography color="text.secondary">
-              Будет создана локальная сессия тренажёра, затем откроется визуальная мнемосхема.
+              Выберите сценарий и режим. В экзаменационном режиме дальнейшие AI-подсказки будут
+              скрыты, но действия и телеметрия продолжат фиксироваться.
             </Typography>
+
+            <FormControl fullWidth disabled={scenariosQuery.isLoading || scenarios.length === 0}>
+              <InputLabel id="training-scenario-label">Учебный сценарий</InputLabel>
+              <Select
+                labelId="training-scenario-label"
+                label="Учебный сценарий"
+                value={selectedScenarioId}
+                onChange={(event) => setSelectedScenarioId(event.target.value)}
+              >
+                {scenarios.map((scenario) => (
+                  <MenuItem key={scenario.id} value={scenario.id}>
+                    {scenario.name} · {scenario.difficulty}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {scenarios.length === 0 && !scenariosQuery.isLoading ? (
+              <Alert severity="info">
+                Для тренажёра пока нет активных сценариев. Можно запустить свободную тренировку.
+              </Alert>
+            ) : null}
+
+            {selectedScenario !== undefined ? (
+              <Typography color="text.secondary">{selectedScenario.description}</Typography>
+            ) : null}
+
+            <FormControl fullWidth>
+              <InputLabel id="training-mode-label">Режим</InputLabel>
+              <Select
+                labelId="training-mode-label"
+                label="Режим"
+                value={mode}
+                onChange={(event) => setMode(event.target.value as TrainingSessionMode)}
+              >
+                <MenuItem value="training">Тренировка</MenuItem>
+                <MenuItem value="exam">Экзамен</MenuItem>
+              </Select>
+            </FormControl>
+
             <Button
               variant="contained"
               size="large"
@@ -106,7 +170,11 @@ export function OperatorSimulatorDetailPage(): JSX.Element {
                 creationInFlightRef.current = true;
                 setSessionFailure(null);
                 createSessionMutation.mutate(
-                  { simulator_id: simulator.id },
+                  {
+                    simulator_id: simulator.id,
+                    scenario_id: selectedScenarioId || undefined,
+                    mode,
+                  },
                   {
                     onSuccess: (session) => {
                       if (session.status === "failed") {
@@ -123,7 +191,7 @@ export function OperatorSimulatorDetailPage(): JSX.Element {
                 );
               }}
             >
-              {createSessionMutation.isPending ? "Создаём сессию" : "Начать тренировку"}
+              {createSessionMutation.isPending ? "Создаём сессию" : "Начать"}
             </Button>
           </Stack>
         </CardContent>
