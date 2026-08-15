@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from copy import deepcopy
 from math import isfinite
 from typing import cast
 from uuid import UUID
@@ -48,6 +49,7 @@ class KtcOilHeatingGateway:
         self._settings = settings
         self._client = client
         self._revision = 1
+        self._last_status_payload: dict[str, object] | None = None
 
     def _timeout(self) -> httpx.Timeout:
         return httpx.Timeout(
@@ -173,15 +175,13 @@ class KtcOilHeatingGateway:
     def _map_status(self, payload: object) -> SimulationState:
         if not isinstance(payload, dict):
             raise InvalidExternalPayloadError
-        pumps = self._read_mapping(payload, "pumps")
-        sensors = self._read_mapping(payload, "sensors")
-        regulators = self._read_mapping(payload, "regulators")
-        installation_output = self._read_optional_mapping(payload, "installation_output")
+        typed_payload = cast(dict[str, object], payload)
+        pumps = self._read_mapping(typed_payload, "pumps")
+        sensors = self._read_mapping(typed_payload, "sensors")
+        regulators = self._read_mapping(typed_payload, "regulators")
+        installation_output = self._read_optional_mapping(typed_payload, "installation_output")
 
-        pump_states = {
-            pump_id: self._read_bool(pumps, pump_id)
-            for pump_id in KTC_PUMPS
-        }
+        pump_states = {pump_id: self._read_bool(pumps, pump_id) for pump_id in KTC_PUMPS}
         density = self._read_number(sensors, "QR5K3D")
         h1a_flow = self._read_number(sensors, "FQR117_1")
         h1v_flow = self._read_number(sensors, "FQR117_2")
@@ -189,15 +189,45 @@ class KtcOilHeatingGateway:
         temperature_c = self._read_number(sensors, "TR41_1")
         pressure_bar = self._read_number(sensors, "PRA351") * KGF_CM2_TO_BAR
 
+        external_revision = self._read_optional_nonnegative_int(typed_payload, "revision")
+        external_simulation_time_ms = self._read_optional_nonnegative_int(
+            typed_payload,
+            "simulation_time_ms",
+        )
+        revision = self._resolve_revision(typed_payload, external_revision)
+        simulation_time_ms = (
+            external_simulation_time_ms
+            if external_simulation_time_ms is not None
+            else revision * 1_000
+        )
+
+        process_payload = {
+            "pumps": pumps,
+            "sensors": sensors,
+            "regulators": regulators,
+            "installation_output": installation_output,
+            "timeline_metadata": {
+                "revision_source": "ktc_backend" if external_revision is not None else "gateway_fallback",
+                "simulation_time_source": (
+                    "ktc_backend"
+                    if external_simulation_time_ms is not None
+                    else "gateway_fallback"
+                ),
+                "external_revision": external_revision,
+                "external_simulation_time_ms": external_simulation_time_ms,
+            },
+            "raw": deepcopy(typed_payload),
+        }
+
+        self._last_status_payload = deepcopy(typed_payload)
+
         return SimulationState(
-            revision=self._revision,
-            simulation_time_ms=self._revision * 1_000,
+            revision=revision,
+            simulation_time_ms=simulation_time_ms,
             boiler=BoilerState(
                 temperature_c=temperature_c,
                 pressure_bar=pressure_bar,
-                status=BoilerStatus.RUNNING
-                if any(pump_states.values())
-                else BoilerStatus.IDLE,
+                status=BoilerStatus.RUNNING if any(pump_states.values()) else BoilerStatus.IDLE,
             ),
             equipment={
                 "H1A": EquipmentState(
@@ -214,13 +244,21 @@ class KtcOilHeatingGateway:
                 ),
             },
             alarms=[],
-            process={
-                "pumps": pumps,
-                "sensors": sensors,
-                "regulators": regulators,
-                "installation_output": installation_output,
-            },
+            process=process_payload,
         )
+
+    def _resolve_revision(
+        self,
+        payload: dict[str, object],
+        external_revision: int | None,
+    ) -> int:
+        if external_revision is not None:
+            self._revision = external_revision
+            return external_revision
+
+        if self._last_status_payload is not None and payload != self._last_status_payload:
+            self._revision += 1
+        return self._revision
 
     @staticmethod
     def _equipment_status(is_running: bool) -> EquipmentStatus:
@@ -255,6 +293,15 @@ class KtcOilHeatingGateway:
         if not isinstance(value, int | float) or isinstance(value, bool):
             raise InvalidExternalPayloadError
         return float(value)
+
+    @staticmethod
+    def _read_optional_nonnegative_int(payload: dict[str, object], field: str) -> int | None:
+        value = payload.get(field)
+        if value is None:
+            return None
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise InvalidExternalPayloadError
+        return value
 
     @staticmethod
     def _read_valve_percent(payload: dict[str, object]) -> int | None:
