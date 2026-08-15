@@ -22,9 +22,12 @@ async def _upsert_scenario(
     description: str,
     difficulty: TrainingScenarioDifficulty,
     actions: list[dict[str, object]],
+    config: dict[str, object] | None = None,
 ) -> TrainingScenario:
     result = await session.execute(select(TrainingScenario).where(TrainingScenario.code == code))
     scenario = result.scalar_one_or_none()
+    scenario_config = config or {"version": 1}
+
     if scenario is None:
         scenario = TrainingScenario(
             code=code,
@@ -33,7 +36,7 @@ async def _upsert_scenario(
             description=description,
             difficulty=difficulty,
             is_active=True,
-            config={"version": 1},
+            config=scenario_config,
         )
         session.add(scenario)
         await session.flush()
@@ -43,30 +46,35 @@ async def _upsert_scenario(
         scenario.description = description
         scenario.difficulty = difficulty
         scenario.is_active = True
+        scenario.config = scenario_config
 
-    existing = await session.execute(
-        select(ScenarioExpectedAction.step_code).where(
-            ScenarioExpectedAction.scenario_id == scenario.id
-        )
+    existing_result = await session.execute(
+        select(ScenarioExpectedAction).where(ScenarioExpectedAction.scenario_id == scenario.id)
     )
-    existing_steps = set(existing.scalars())
-    for action in actions:
-        step_code = str(action["step_code"])
-        if step_code in existing_steps:
-            continue
-        session.add(
-            ScenarioExpectedAction(
-                scenario_id=scenario.id,
-                step_code=step_code,
-                equipment_id=str(action["equipment_id"]),
-                action=str(action["action"]),
-                payload_constraints=action.get("payload_constraints"),
-                condition=action.get("condition", {}),
-                allowed_delay_ms=action.get("allowed_delay_ms"),
-                severity_if_missed=str(action.get("severity_if_missed", "warning")),
-                order_index=int(action["order_index"]),
-            )
-        )
+    existing_by_step = {item.step_code: item for item in existing_result.scalars()}
+    expected_steps: set[str] = set()
+
+    for action_data in actions:
+        step_code = str(action_data["step_code"])
+        expected_steps.add(step_code)
+        action = existing_by_step.get(step_code)
+        if action is None:
+            action = ScenarioExpectedAction(scenario_id=scenario.id, step_code=step_code)
+            session.add(action)
+
+        action.equipment_id = str(action_data["equipment_id"])
+        action.action = str(action_data["action"])
+        action.payload_constraints = action_data.get("payload_constraints")
+        action.condition = action_data.get("condition", {})
+        action.allowed_delay_ms = action_data.get("allowed_delay_ms")
+        action.severity_if_missed = str(action_data.get("severity_if_missed", "warning"))
+        action.order_index = int(action_data["order_index"])
+
+    for step_code, action in existing_by_step.items():
+        if step_code not in expected_steps:
+            await session.delete(action)
+
+    await session.flush()
     return scenario
 
 
@@ -85,6 +93,7 @@ async def seed_simulators(
             name="Базовый запуск котла",
             description="Последовательный запуск насосов демонстрационного котла.",
             difficulty=TrainingScenarioDifficulty.BASIC,
+            config={"version": 1, "assessment_focus": ["sequence"]},
             actions=[
                 {
                     "step_code": "start-steam-supply",
@@ -106,6 +115,7 @@ async def seed_simulators(
                 },
             ],
         )
+
         await _upsert_scenario(
             session,
             simulator=oil_heating,
@@ -113,6 +123,7 @@ async def seed_simulators(
             name="Базовый запуск блока подогрева нефти",
             description="Учебная последовательность запуска насосов H1A, H1B и H1V.",
             difficulty=TrainingScenarioDifficulty.BASIC,
+            config={"version": 1, "assessment_focus": ["sequence", "missed_action"]},
             actions=[
                 {
                     "step_code": "start-h1a",
@@ -138,6 +149,186 @@ async def seed_simulators(
                     "action": "start",
                     "condition": {},
                     "allowed_delay_ms": 20_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 3,
+                },
+            ],
+        )
+
+        await _upsert_scenario(
+            session,
+            simulator=oil_heating,
+            code="oil-heating-basic-shutdown",
+            name="Учебная остановка блока подогрева нефти",
+            description=(
+                "Отработка последовательной остановки насосов H1V, H1B и H1A "
+                "на командах, уже поддерживаемых ktc_backend."
+            ),
+            difficulty=TrainingScenarioDifficulty.BASIC,
+            config={"version": 1, "assessment_focus": ["sequence", "missed_action"]},
+            actions=[
+                {
+                    "step_code": "stop-h1v",
+                    "equipment_id": "H1V",
+                    "action": "stop",
+                    "condition": {},
+                    "allowed_delay_ms": 20_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 1,
+                },
+                {
+                    "step_code": "stop-h1b",
+                    "equipment_id": "H1B",
+                    "action": "stop",
+                    "condition": {},
+                    "allowed_delay_ms": 20_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 2,
+                },
+                {
+                    "step_code": "stop-h1a",
+                    "equipment_id": "H1A",
+                    "action": "stop",
+                    "condition": {},
+                    "allowed_delay_ms": 20_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 3,
+                },
+            ],
+        )
+
+        await _upsert_scenario(
+            session,
+            simulator=oil_heating,
+            code="oil-heating-flow-control",
+            name="Управление расходом в блоке подогрева нефти",
+            description=(
+                "Запуск H1A и последовательная установка регуляторов FRC404, FRC405 и FRC406 "
+                "в учебный диапазон 40–60%."
+            ),
+            difficulty=TrainingScenarioDifficulty.MEDIUM,
+            config={"version": 1, "assessment_focus": ["sequence", "setpoint"]},
+            actions=[
+                {
+                    "step_code": "flow-start-h1a",
+                    "equipment_id": "H1A",
+                    "action": "start",
+                    "condition": {},
+                    "allowed_delay_ms": 20_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 1,
+                },
+                {
+                    "step_code": "set-frc404",
+                    "equipment_id": "FRC404",
+                    "action": "set",
+                    "payload_constraints": {"value": {"min": 40, "max": 60}},
+                    "condition": {},
+                    "allowed_delay_ms": 15_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 2,
+                },
+                {
+                    "step_code": "set-frc405",
+                    "equipment_id": "FRC405",
+                    "action": "set",
+                    "payload_constraints": {"value": {"min": 40, "max": 60}},
+                    "condition": {},
+                    "allowed_delay_ms": 15_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 3,
+                },
+                {
+                    "step_code": "set-frc406",
+                    "equipment_id": "FRC406",
+                    "action": "set",
+                    "payload_constraints": {"value": {"min": 40, "max": 60}},
+                    "condition": {},
+                    "allowed_delay_ms": 15_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 4,
+                },
+            ],
+        )
+
+        await _upsert_scenario(
+            session,
+            simulator=oil_heating,
+            code="oil-heating-wrong-sequence-training",
+            name="Контроль последовательности запуска",
+            description=(
+                "Сценарий для выявления нарушения порядка действий: ожидается запуск "
+                "H1A → H1B → H1V."
+            ),
+            difficulty=TrainingScenarioDifficulty.MEDIUM,
+            config={"version": 1, "assessment_focus": ["wrong_sequence"]},
+            actions=[
+                {
+                    "step_code": "sequence-start-h1a",
+                    "equipment_id": "H1A",
+                    "action": "start",
+                    "condition": {},
+                    "allowed_delay_ms": 20_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 1,
+                },
+                {
+                    "step_code": "sequence-start-h1b",
+                    "equipment_id": "H1B",
+                    "action": "start",
+                    "condition": {},
+                    "allowed_delay_ms": 20_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 2,
+                },
+                {
+                    "step_code": "sequence-start-h1v",
+                    "equipment_id": "H1V",
+                    "action": "start",
+                    "condition": {},
+                    "allowed_delay_ms": 20_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 3,
+                },
+            ],
+        )
+
+        await _upsert_scenario(
+            session,
+            simulator=oil_heating,
+            code="oil-heating-reaction-time-training",
+            name="Тренировка времени реакции",
+            description=(
+                "Последовательный запуск H1A, H1B и H1V с сокращённым допустимым временем "
+                "реакции для последующей классификации LATE_ACTION."
+            ),
+            difficulty=TrainingScenarioDifficulty.MEDIUM,
+            config={"version": 1, "assessment_focus": ["reaction_time", "late_action"]},
+            actions=[
+                {
+                    "step_code": "reaction-start-h1a",
+                    "equipment_id": "H1A",
+                    "action": "start",
+                    "condition": {},
+                    "allowed_delay_ms": 5_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 1,
+                },
+                {
+                    "step_code": "reaction-start-h1b",
+                    "equipment_id": "H1B",
+                    "action": "start",
+                    "condition": {},
+                    "allowed_delay_ms": 5_000,
+                    "severity_if_missed": "warning",
+                    "order_index": 2,
+                },
+                {
+                    "step_code": "reaction-start-h1v",
+                    "equipment_id": "H1V",
+                    "action": "start",
+                    "condition": {},
+                    "allowed_delay_ms": 5_000,
                     "severity_if_missed": "warning",
                     "order_index": 3,
                 },
