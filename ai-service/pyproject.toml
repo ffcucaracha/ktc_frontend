@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "AI analytics contract service for the operator trainer."
 requires-python = ">=3.12"
 dependencies = [
+    "catboost>=1.2.8",
     "fastapi>=0.115.0",
     "pydantic>=2.9.0",
     "uvicorn[standard]>=0.30.6",

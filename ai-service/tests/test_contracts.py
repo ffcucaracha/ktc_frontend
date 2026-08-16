@@ -21,7 +21,7 @@ def test_predict_risk_contract() -> None:
     payload = response.json()
     assert payload["risk"] == 0.0
     assert payload["horizon_seconds"] == 10
-    assert payload["model_version"] == "mock-ai-contract-v1"
+    assert payload["model_version"] == "risk-model-unavailable-v1"
 
 
 def test_explain_error_does_not_reclassify_error() -> None:

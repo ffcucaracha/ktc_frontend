@@ -84,6 +84,11 @@ services:
   ai-service:
     build:
       context: ./ai-service
+    environment:
+      AI_RISK_MODEL_PATH: ${AI_RISK_MODEL_PATH:-/app/models/risk-catboost-v1.cbm}
+      AI_RISK_MODEL_METADATA_PATH: ${AI_RISK_MODEL_METADATA_PATH:-/app/models/risk-catboost-v1.json}
+    volumes:
+      - ./ai-service/models:/app/models
     ports:
       - "${AI_HOST_PORT:-8090}:8090"
     healthcheck:

@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.prediction.risk_model import risk_predictor
 from app.schemas.contracts import (
     Debrief,
     DebriefRequest,
@@ -12,19 +13,12 @@ from app.schemas.contracts import (
 )
 
 router = APIRouter()
-MODEL_VERSION = "mock-ai-contract-v1"
+CONTRACT_MODEL_VERSION = "mock-ai-contract-v1"
 
 
 @router.post("/v1/predict-risk", response_model=RiskPrediction)
 async def predict_risk(request: RiskPredictionRequest) -> RiskPrediction:
-    del request
-    return RiskPrediction(
-        risk=0.0,
-        predicted_error_code=None,
-        horizon_seconds=10,
-        model_version=MODEL_VERSION,
-        features=[],
-    )
+    return risk_predictor.predict(request)
 
 
 @router.post("/v1/explain-error", response_model=ErrorExplanation)
@@ -33,11 +27,11 @@ async def explain_error(request: ErrorExplanationRequest) -> ErrorExplanation:
         summary=f"Зафиксирована ошибка {request.error_code}.",
         explanation=(
             "AI-service получил код ошибки и фактический контекст от application backend. "
-            "На этом этапе сервис не меняет классификацию и не придумывает новые факты."
+            "Сервис не меняет классификацию и не придумывает новые факты."
         ),
         recommendation="Повторите соответствующий шаг учебного сценария.",
         sources=request.regulation_context,
-        model=MODEL_VERSION,
+        model=CONTRACT_MODEL_VERSION,
     )
 
 
@@ -53,7 +47,7 @@ async def build_debrief(request: DebriefRequest) -> Debrief:
         weaknesses=weaknesses,
         priority_actions=[f"Повторить работу с ошибкой {code}." for code in weaknesses[:3]],
         recommended_scenario_code=None,
-        model=MODEL_VERSION,
+        model=CONTRACT_MODEL_VERSION,
     )
 
 
@@ -68,5 +62,5 @@ async def recommend_training(request: RecommendationRequest) -> Recommendation:
         recommended_scenario_code=None,
         rationale=rationale,
         priority="medium",
-        model=MODEL_VERSION,
+        model=CONTRACT_MODEL_VERSION,
     )
