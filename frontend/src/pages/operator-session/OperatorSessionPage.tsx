@@ -66,6 +66,9 @@ export function OperatorSessionPage(): JSX.Element {
   }
 
   const simulator = simulatorQuery.data;
+  const goToResult = (): void => {
+    navigate(`/operator/sessions/${sessionQuery.data.id}/result`);
+  };
   const simulatorComponent =
     simulator.visualization_type === "oil-heating-v1" ? (
       <OilHeatingSimulator
@@ -74,9 +77,7 @@ export function OperatorSessionPage(): JSX.Element {
         stopping={stopMutation.isPending}
         onStop={() => {
           stopMutation.mutate(sessionQuery.data.id, {
-            onSuccess: () => {
-              navigate("/operator/simulators");
-            },
+            onSuccess: goToResult,
           });
         }}
       />
@@ -87,9 +88,7 @@ export function OperatorSessionPage(): JSX.Element {
         stopping={stopMutation.isPending}
         onStop={() => {
           stopMutation.mutate(sessionQuery.data.id, {
-            onSuccess: () => {
-              navigate("/operator/simulators");
-            },
+            onSuccess: goToResult,
           });
         }}
       />

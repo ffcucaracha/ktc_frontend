@@ -69,6 +69,21 @@ export interface SessionDebrief {
   recommendations: string[];
 }
 
+export interface SimulationTimelineEvent {
+  id: string;
+  session_id: string;
+  event_type: string;
+  source: string;
+  revision: number | null;
+  simulation_time_ms: number | null;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface SimulationTimelineResponse {
+  items: SimulationTimelineEvent[];
+}
+
 export type TrainingRealtimeEventType =
   | "assessment.error.detected"
   | "ai.risk.updated"

@@ -7,6 +7,7 @@ import { AdminOperatorsPage } from "../pages/admin-operators/AdminOperatorsPage"
 import { AdminOperatorDetailPage } from "../pages/admin-operator-detail/AdminOperatorDetailPage";
 import { LoginPage } from "../pages/login/LoginPage";
 import { OperatorSessionPage } from "../pages/operator-session/OperatorSessionPage";
+import { OperatorSessionResultPage } from "../pages/operator-session-result/OperatorSessionResultPage";
 import { OperatorSimulatorDetailPage } from "../pages/operator-simulator-detail/OperatorSimulatorDetailPage";
 import { OperatorSimulatorsPage } from "../pages/operator-simulators/OperatorSimulatorsPage";
 import { ErrorView } from "../shared/ui/ErrorView";
@@ -92,6 +93,14 @@ function createRouter() {
           element: (
             <ProtectedRoute allowedRoles={["operator"]}>
               <OperatorSimulatorDetailPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: "operator/sessions/:sessionId/result",
+          element: (
+            <ProtectedRoute allowedRoles={["operator"]}>
+              <OperatorSessionResultPage />
             </ProtectedRoute>
           ),
         },

@@ -1,6 +1,11 @@
 import { apiRequest } from "../../../shared/api/client";
 import { getAccessToken } from "../../../shared/auth/authStore";
-import type { SessionDebrief, TrainingAssessment } from "./types";
+import type {
+  SessionDebrief,
+  SimulationTimelineEvent,
+  SimulationTimelineResponse,
+  TrainingAssessment,
+} from "./types";
 
 export async function getTrainingAssessment(sessionId: string): Promise<TrainingAssessment> {
   return apiRequest<TrainingAssessment>(`/simulation-sessions/${sessionId}/assessment`, {
@@ -12,6 +17,14 @@ export async function getSessionDebrief(sessionId: string): Promise<SessionDebri
   return apiRequest<SessionDebrief>(`/simulation-sessions/${sessionId}/debrief`, {
     auth: true,
   });
+}
+
+export async function getSessionTimeline(sessionId: string): Promise<SimulationTimelineEvent[]> {
+  const response = await apiRequest<SimulationTimelineResponse>(
+    `/simulation-sessions/${sessionId}/timeline`,
+    { auth: true },
+  );
+  return response.items;
 }
 
 export function createTrainingEventSocket(sessionId: string): WebSocket {

@@ -1,7 +1,15 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
-import { getSessionDebrief, getTrainingAssessment } from "../api/trainingApi";
-import type { SessionDebrief, TrainingAssessment } from "../api/types";
+import {
+  getSessionDebrief,
+  getSessionTimeline,
+  getTrainingAssessment,
+} from "../api/trainingApi";
+import type {
+  SessionDebrief,
+  SimulationTimelineEvent,
+  TrainingAssessment,
+} from "../api/types";
 
 export const trainingQueryKey = ["training"] as const;
 
@@ -23,6 +31,17 @@ export function useSessionDebriefQuery(
   return useQuery({
     queryKey: [...trainingQueryKey, sessionId, "debrief"],
     queryFn: () => getSessionDebrief(sessionId),
+    enabled: enabled && sessionId.length > 0,
+  });
+}
+
+export function useSessionTimelineQuery(
+  sessionId: string,
+  enabled = true,
+): UseQueryResult<SimulationTimelineEvent[]> {
+  return useQuery({
+    queryKey: [...trainingQueryKey, sessionId, "timeline"],
+    queryFn: () => getSessionTimeline(sessionId),
     enabled: enabled && sessionId.length > 0,
   });
 }
