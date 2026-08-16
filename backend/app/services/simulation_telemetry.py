@@ -5,10 +5,13 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.integrations.ai.base import AIGateway
+from app.integrations.ai.errors import AIIntegrationError
 from app.integrations.simulation.base import SimulationGateway
 from app.integrations.simulation.errors import SimulationIntegrationError
 from app.models import SimulationSession
 from app.repositories.simulation_sessions import SimulationSessionRepository
+from app.services.realtime_ai import RealtimeAIService
 from app.services.simulation import (
     InvalidSessionOperationError,
     SimulationService,
@@ -33,12 +36,14 @@ class SimulationTelemetryCollector:
         session_factory: async_sessionmaker[AsyncSession],
         gateway: SimulationGateway,
         *,
+        ai_gateway: AIGateway | None = None,
         polling_interval_seconds: float = 2.0,
         discovery_interval_seconds: float = 1.0,
         sleep: SleepFunc = asyncio.sleep,
     ) -> None:
         self._session_factory = session_factory
         self._gateway = gateway
+        self._ai_gateway = ai_gateway
         self._polling_interval_seconds = polling_interval_seconds
         self._discovery_interval_seconds = discovery_interval_seconds
         self._sleep = sleep
@@ -126,6 +131,18 @@ class SimulationTelemetryCollector:
             try:
                 async with self._session_factory() as session:
                     await SimulationService(session, self._gateway).get_state(session_id, operator_id)
+                    if self._ai_gateway is not None:
+                        try:
+                            await RealtimeAIService(session, self._ai_gateway).predict_and_record(
+                                session_id,
+                                operator_id,
+                            )
+                        except AIIntegrationError as exc:
+                            logger.warning(
+                                "AI risk prediction failed: %s",
+                                exc,
+                                extra={"simulation_session_id": str(session_id)},
+                            )
             except (SimulationSessionNotFoundError, InvalidSessionOperationError):
                 return
             except StaleStateRevisionError:

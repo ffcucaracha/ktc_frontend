@@ -18,6 +18,10 @@ export type SimulationEventType =
   | "alarm.raised"
   | "alarm.cleared"
   | "integration.error"
+  | "assessment.error.detected"
+  | "ai.risk.updated"
+  | "ai.explanation.ready"
+  | "training.result.ready"
   | "session.completed"
   | "session.failed";
 

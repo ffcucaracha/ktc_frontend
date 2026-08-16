@@ -38,6 +38,10 @@ class SimulationTimelineEventType(StrEnum):
     ALARM_RAISED = "alarm.raised"
     ALARM_CLEARED = "alarm.cleared"
     INTEGRATION_ERROR = "integration.error"
+    ASSESSMENT_ERROR_DETECTED = "assessment.error.detected"
+    AI_RISK_UPDATED = "ai.risk.updated"
+    AI_EXPLANATION_READY = "ai.explanation.ready"
+    TRAINING_RESULT_READY = "training.result.ready"
     SESSION_COMPLETED = "session.completed"
     SESSION_FAILED = "session.failed"
 
