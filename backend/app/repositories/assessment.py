@@ -4,15 +4,21 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import OperatorError, TrainingResult
+from app.models import OperatorError, SimulationSession, TrainingResult
 
 
 class AssessmentRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def replace_errors(self, session_id: UUID, errors: Iterable[OperatorError]) -> list[OperatorError]:
-        await self._session.execute(delete(OperatorError).where(OperatorError.session_id == session_id))
+    async def replace_errors(
+        self,
+        session_id: UUID,
+        errors: Iterable[OperatorError],
+    ) -> list[OperatorError]:
+        await self._session.execute(
+            delete(OperatorError).where(OperatorError.session_id == session_id)
+        )
         items = list(errors)
         self._session.add_all(items)
         await self._session.flush()
@@ -22,7 +28,19 @@ class AssessmentRepository:
         result = await self._session.execute(
             select(OperatorError)
             .where(OperatorError.session_id == session_id)
-            .order_by(OperatorError.occurred_at_ms.asc().nullslast(), OperatorError.created_at.asc())
+            .order_by(
+                OperatorError.occurred_at_ms.asc().nullslast(),
+                OperatorError.created_at.asc(),
+            )
+        )
+        return list(result.scalars())
+
+    async def list_errors_for_operator(self, operator_id: UUID) -> list[OperatorError]:
+        result = await self._session.execute(
+            select(OperatorError)
+            .join(SimulationSession, SimulationSession.id == OperatorError.session_id)
+            .where(SimulationSession.operator_id == operator_id)
+            .order_by(OperatorError.created_at.asc(), OperatorError.id.asc())
         )
         return list(result.scalars())
 
@@ -31,6 +49,15 @@ class AssessmentRepository:
             select(TrainingResult).where(TrainingResult.session_id == session_id)
         )
         return result.scalar_one_or_none()
+
+    async def list_results_for_operator(self, operator_id: UUID) -> list[TrainingResult]:
+        result = await self._session.execute(
+            select(TrainingResult)
+            .join(SimulationSession, SimulationSession.id == TrainingResult.session_id)
+            .where(SimulationSession.operator_id == operator_id)
+            .order_by(TrainingResult.updated_at.desc(), TrainingResult.id.desc())
+        )
+        return list(result.scalars())
 
     async def upsert_result(
         self,
