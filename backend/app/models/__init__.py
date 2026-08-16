@@ -12,6 +12,7 @@ from app.models.enums import (
 )
 from app.models.login_event import LoginEvent
 from app.models.operator_error import OperatorError
+from app.models.operator_skill_profile import OperatorSkillProfile
 from app.models.refresh_token import RefreshToken
 from app.models.scenario_expected_action import ScenarioExpectedAction
 from app.models.simulation_command import SimulationCommand
@@ -28,6 +29,7 @@ __all__ = [
     "OperatorError",
     "OperatorErrorSource",
     "OperatorErrorType",
+    "OperatorSkillProfile",
     "RefreshToken",
     "ScenarioExpectedAction",
     "SimulationCommand",
