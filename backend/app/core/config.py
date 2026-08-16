@@ -63,6 +63,21 @@ class Settings(BaseSettings):
         gt=0,
         validation_alias="SIMULATION_TELEMETRY_DISCOVERY_INTERVAL_SECONDS",
     )
+    ai_gateway_mode: str = Field(default="mock", validation_alias="AI_GATEWAY_MODE")
+    ai_service_base_url: str = Field(
+        default="http://ai-service:8090",
+        validation_alias="AI_SERVICE_BASE_URL",
+    )
+    ai_connect_timeout_seconds: float = Field(
+        default=3.0,
+        gt=0,
+        validation_alias="AI_CONNECT_TIMEOUT_SECONDS",
+    )
+    ai_read_timeout_seconds: float = Field(
+        default=15.0,
+        gt=0,
+        validation_alias="AI_READ_TIMEOUT_SECONDS",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
