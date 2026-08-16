@@ -19,6 +19,7 @@ from app.models.simulation_command import SimulationCommand
 from app.models.simulation_event import SimulationEvent
 from app.models.simulation_session import SimulationSession
 from app.models.simulator_definition import SimulatorDefinition
+from app.models.training_completion_processing import TrainingCompletionProcessing
 from app.models.training_result import TrainingResult
 from app.models.training_scenario import TrainingScenario
 from app.models.user import User
@@ -40,6 +41,7 @@ __all__ = [
     "SimulationSessionStatus",
     "SimulationTimelineEventType",
     "SimulatorDefinition",
+    "TrainingCompletionProcessing",
     "TrainingResult",
     "TrainingScenario",
     "TrainingScenarioDifficulty",

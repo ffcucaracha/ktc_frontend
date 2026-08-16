@@ -16,6 +16,7 @@ from app.core.logging import configure_logging
 from app.db.session import AsyncSessionLocal, engine
 from app.integrations.simulation.factory import create_simulation_gateway
 from app.services.simulation_telemetry import SimulationTelemetryCollector
+from app.services.training_completion_events import TrainingCompletionEventProcessor
 
 
 @asynccontextmanager
@@ -25,11 +26,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "simulation_telemetry_collector",
         None,
     )
+    completion_processor: TrainingCompletionEventProcessor | None = getattr(
+        app.state,
+        "training_completion_event_processor",
+        None,
+    )
     if collector is not None:
         await collector.start()
+    if completion_processor is not None:
+        await completion_processor.start()
     try:
         yield
     finally:
+        if completion_processor is not None:
+            await completion_processor.stop()
         if collector is not None:
             await collector.stop()
         await engine.dispose()
@@ -46,6 +56,12 @@ def create_app() -> FastAPI:
             create_simulation_gateway(settings),
             polling_interval_seconds=settings.simulation_telemetry_interval_seconds,
             discovery_interval_seconds=settings.simulation_telemetry_discovery_interval_seconds,
+        )
+    if settings.training_completion_events_enabled:
+        app.state.training_completion_event_processor = TrainingCompletionEventProcessor(
+            AsyncSessionLocal,
+            polling_interval_seconds=settings.training_completion_events_interval_seconds,
+            max_attempts=settings.training_completion_events_max_attempts,
         )
 
     configure_cors(app, settings.cors_origin_list)

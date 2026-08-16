@@ -63,6 +63,20 @@ class Settings(BaseSettings):
         gt=0,
         validation_alias="SIMULATION_TELEMETRY_DISCOVERY_INTERVAL_SECONDS",
     )
+    training_completion_events_enabled: bool = Field(
+        default=True,
+        validation_alias="TRAINING_COMPLETION_EVENTS_ENABLED",
+    )
+    training_completion_events_interval_seconds: float = Field(
+        default=2.0,
+        gt=0,
+        validation_alias="TRAINING_COMPLETION_EVENTS_INTERVAL_SECONDS",
+    )
+    training_completion_events_max_attempts: int = Field(
+        default=5,
+        ge=1,
+        validation_alias="TRAINING_COMPLETION_EVENTS_MAX_ATTEMPTS",
+    )
     ai_gateway_mode: str = Field(default="mock", validation_alias="AI_GATEWAY_MODE")
     ai_service_base_url: str = Field(
         default="http://ai-service:8090",
