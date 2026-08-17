@@ -5,6 +5,9 @@ from app.integrations.ai.mock_gateway import MockAIGateway
 
 
 def create_ai_gateway(settings: Settings) -> AIGateway:
+    if not settings.ai_enabled:
+        return MockAIGateway()
+
     mode = settings.ai_gateway_mode.lower()
     if mode == "mock":
         return MockAIGateway()

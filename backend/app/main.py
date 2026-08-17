@@ -56,7 +56,7 @@ def create_app() -> FastAPI:
         app.state.simulation_telemetry_collector = SimulationTelemetryCollector(
             AsyncSessionLocal,
             create_simulation_gateway(settings),
-            ai_gateway=create_ai_gateway(settings),
+            ai_gateway=create_ai_gateway(settings) if settings.ai_enabled else None,
             polling_interval_seconds=settings.simulation_telemetry_interval_seconds,
             discovery_interval_seconds=settings.simulation_telemetry_discovery_interval_seconds,
         )

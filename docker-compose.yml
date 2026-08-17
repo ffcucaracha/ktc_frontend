@@ -27,6 +27,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       SIMULATION_GATEWAY_MODE: ${SIMULATION_GATEWAY_MODE:-mock}
       KTC_API_BASE_URL: ${KTC_API_BASE_URL:-http://ktc-backend:8000}
+      AI_ENABLED: ${AI_ENABLED:-true}
       AI_GATEWAY_MODE: ${AI_GATEWAY_MODE:-mock}
       AI_SERVICE_BASE_URL: ${AI_SERVICE_BASE_URL:-http://ai-service:8090}
       AI_PREDICTION_TIMEOUT_SECONDS: ${AI_PREDICTION_TIMEOUT_SECONDS:-0.8}
@@ -37,8 +38,6 @@ services:
         condition: service_healthy
       ktc-backend:
         condition: service_started
-      ai-service:
-        condition: service_healthy
     command:
       - /bin/sh
       - -c
@@ -94,6 +93,7 @@ services:
       AI_LLM_API_KEY: ${AI_LLM_API_KEY:-}
       AI_LLM_TIMEOUT_SECONDS: ${AI_LLM_TIMEOUT_SECONDS:-30}
       AI_LLM_TEMPERATURE: ${AI_LLM_TEMPERATURE:-0.2}
+      RAG_ENABLED: ${RAG_ENABLED:-false}
     volumes:
       - ./ai-service/models:/app/models
     ports:

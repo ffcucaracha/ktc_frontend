@@ -12,6 +12,14 @@ class LLMSettings:
     api_key: str | None
     timeout_seconds: float
     temperature: float
+    rag_enabled: bool = False
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def load_llm_settings() -> LLMSettings:
@@ -22,4 +30,5 @@ def load_llm_settings() -> LLMSettings:
         api_key=os.getenv("AI_LLM_API_KEY") or None,
         timeout_seconds=float(os.getenv("AI_LLM_TIMEOUT_SECONDS", "30")),
         temperature=float(os.getenv("AI_LLM_TEMPERATURE", "0.2")),
+        rag_enabled=_env_bool("RAG_ENABLED", False),
     )
