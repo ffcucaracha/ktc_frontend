@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.explanation.service import narrative_service
 from app.prediction.risk_model import risk_predictor
 from app.schemas.contracts import (
     Debrief,
@@ -23,32 +24,12 @@ async def predict_risk(request: RiskPredictionRequest) -> RiskPrediction:
 
 @router.post("/v1/explain-error", response_model=ErrorExplanation)
 async def explain_error(request: ErrorExplanationRequest) -> ErrorExplanation:
-    return ErrorExplanation(
-        summary=f"Зафиксирована ошибка {request.error_code}.",
-        explanation=(
-            "AI-service получил код ошибки и фактический контекст от application backend. "
-            "Сервис не меняет классификацию и не придумывает новые факты."
-        ),
-        recommendation="Повторите соответствующий шаг учебного сценария.",
-        sources=request.regulation_context,
-        model=CONTRACT_MODEL_VERSION,
-    )
+    return await narrative_service.explain_error(request)
 
 
 @router.post("/v1/debrief", response_model=Debrief)
 async def build_debrief(request: DebriefRequest) -> Debrief:
-    score = request.session_result.get("score")
-    weaknesses = list(dict.fromkeys(item.error_code for item in request.errors))
-    return Debrief(
-        short_summary=(
-            f"Результат тренировки: {score}." if score is not None else "Тренировка завершена."
-        ),
-        strengths=[] if weaknesses else ["Классифицированные ошибки отсутствуют."],
-        weaknesses=weaknesses,
-        priority_actions=[f"Повторить работу с ошибкой {code}." for code in weaknesses[:3]],
-        recommended_scenario_code=None,
-        model=CONTRACT_MODEL_VERSION,
-    )
+    return await narrative_service.build_debrief(request)
 
 
 @router.post("/v1/recommend-training", response_model=Recommendation)

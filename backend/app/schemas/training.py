@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models import OperatorErrorSource, OperatorErrorType
 
@@ -95,6 +95,15 @@ class TrainingRecommendationsResponse(BaseModel):
     items: list[TrainingRecommendationResponse]
 
 
+class ErrorExplanationResponse(BaseModel):
+    error_id: UUID
+    summary: str
+    explanation: str
+    recommendation: str
+    sources: list[dict[str, object]] = Field(default_factory=list)
+    model: str
+
+
 class DebriefResponse(BaseModel):
     session_id: UUID
     status: str
@@ -103,3 +112,5 @@ class DebriefResponse(BaseModel):
     strengths: list[str]
     issues: list[str]
     recommendations: list[str]
+    recommended_scenario_code: str | None = None
+    error_explanations: list[ErrorExplanationResponse] = Field(default_factory=list)

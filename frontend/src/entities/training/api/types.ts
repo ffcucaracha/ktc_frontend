@@ -59,6 +59,15 @@ export interface AICoachMessage {
   updatedAt: Date;
 }
 
+export interface ErrorExplanation {
+  error_id: string;
+  summary: string;
+  explanation: string;
+  recommendation: string;
+  sources: Array<Record<string, unknown>>;
+  model: string;
+}
+
 export interface SessionDebrief {
   session_id: string;
   status: string;
@@ -67,6 +76,8 @@ export interface SessionDebrief {
   strengths: string[];
   issues: string[];
   recommendations: string[];
+  recommended_scenario_code: string | null;
+  error_explanations: ErrorExplanation[];
 }
 
 export interface SimulationTimelineEvent {

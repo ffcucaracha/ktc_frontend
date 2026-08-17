@@ -6,13 +6,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_admin, require_operator
 from app.api.errors import ApiError
+from app.core.config import Settings, get_settings
 from app.db.session import get_session
-from app.models import SimulationSessionStatus, TrainingSessionMode, User, UserRole
+from app.integrations.ai.factory import create_ai_gateway
+from app.models import SimulationSessionStatus, TrainingScenario, TrainingSessionMode, User, UserRole
 from app.repositories.simulation_events import SimulationEventRepository
 from app.repositories.simulation_sessions import SimulationSessionRepository
 from app.repositories.users import UserRepository
 from app.schemas.training import (
     DebriefResponse,
+    ErrorExplanationResponse,
     OperatorErrorResponse,
     OperatorErrorsResponse,
     SimulationTimelineEventResponse,
@@ -30,6 +33,7 @@ from app.services.assessment import (
     AssessmentSessionNotFoundError,
 )
 from app.services.training_insights import TrainingInsightsService
+from app.services.training_narrative import TrainingNarrativeService
 
 router = APIRouter(tags=["training"])
 
@@ -140,6 +144,7 @@ async def get_session_debrief(
     session_id: UUID,
     operator: Annotated[User, Depends(require_operator)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> DebriefResponse:
     simulation_session = await SimulationSessionRepository(session).get_for_operator(
         session_id,
@@ -158,42 +163,36 @@ async def get_session_debrief(
     except AssessmentScenarioRequiredError as exc:
         raise _scenario_required() from exc
 
-    errors = outcome.errors
-    issue_types = sorted({item.error_type.value for item in errors})
-    strengths: list[str] = []
-    if outcome.result.sequence_score >= 90:
-        strengths.append("Последовательность действий выполнена уверенно.")
-    if outcome.result.reaction_score >= 90:
-        strengths.append("Время реакции соответствует требованиям сценария.")
-    if outcome.result.safety_score >= 90:
-        strengths.append("Критических нарушений безопасности не выявлено.")
-    if not strengths:
-        strengths.append("Сессия завершена и доступна для детального разбора.")
-
-    recommendations: list[str] = []
-    if "WRONG_SEQUENCE" in issue_types:
-        recommendations.append("Повторить сценарий с фокусом на порядок операций.")
-    if "LATE_ACTION" in issue_types:
-        recommendations.append("Повторить тренировку с контролем времени реакции.")
-    if "MISSED_ACTION" in issue_types:
-        recommendations.append("Отработать выполнение всех обязательных шагов сценария.")
-    if "WRONG_ACTION" in issue_types:
-        recommendations.append("Повторить работу с командами оборудования и уставками.")
-    if not recommendations:
-        recommendations.append("Закрепить результат повторным прохождением сценария.")
-
-    headline = (
-        f"Результат {outcome.result.score:.0f}/{outcome.result.max_score:.0f}; "
-        f"ошибок: {outcome.result.error_count}."
+    scenario = (
+        await session.get(TrainingScenario, simulation_session.training_scenario_id)
+        if simulation_session.training_scenario_id is not None
+        else None
+    )
+    narrative = await TrainingNarrativeService(create_ai_gateway(settings)).build(
+        result=outcome.result,
+        errors=outcome.errors,
+        scenario_code=scenario.code if scenario is not None else None,
     )
     return DebriefResponse(
         session_id=session_id,
         status=outcome.result.status,
-        generated_by="rules",
-        headline=headline,
-        strengths=strengths,
-        issues=issue_types,
-        recommendations=recommendations,
+        generated_by=narrative.generated_by,
+        headline=narrative.headline,
+        strengths=narrative.strengths,
+        issues=narrative.issues,
+        recommendations=narrative.recommendations,
+        recommended_scenario_code=narrative.recommended_scenario_code,
+        error_explanations=[
+            ErrorExplanationResponse(
+                error_id=item.error_id,
+                summary=item.summary,
+                explanation=item.explanation,
+                recommendation=item.recommendation,
+                sources=item.sources,
+                model=item.model,
+            )
+            for item in narrative.error_explanations
+        ],
     )
 
 
