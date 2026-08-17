@@ -45,13 +45,13 @@ async function openBoilerDemo(page: Page): Promise<void> {
   await page.goto("/operator/simulators");
   await expect(page.getByRole("heading", { name: "Тренажёры" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Котёл с двумя насосами" })).toBeVisible();
-  await page.getByRole("link", { name: "Открыть" }).click();
+  await page.getByRole("link", { name: "Открыть" }).first().click();
   await expect(page.getByRole("heading", { name: "Котёл с двумя насосами" })).toBeVisible();
 }
 
 function composeLogs(): string {
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-  return execFileSync("docker", ["compose", "logs", "backend", "frontend"], {
+  return execFileSync("docker", ["compose", "logs", "backend", "frontend", "ai-service"], {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -60,7 +60,7 @@ function composeLogs(): string {
 
 test.describe.configure({ mode: "serial" });
 
-test("MVP happy path uses authoritative simulation state", async ({ page }) => {
+test("MVP happy path reaches deterministic debrief", async ({ page }) => {
   await login(page, adminUsername, adminPassword);
   await expect(page).toHaveURL(/\/admin\/operators/u);
   await createOperator(page);
@@ -77,8 +77,8 @@ test("MVP happy path uses authoritative simulation state", async ({ page }) => {
 
   await login(page, operatorUsername, operatorPassword);
   await openBoilerDemo(page);
-  await page.getByRole("button", { name: "Начать тренировку" }).click();
-  await expect(page).toHaveURL(/\/operator\/sessions\/[0-9a-f-]+/u);
+  await page.getByRole("button", { name: "Начать" }).click();
+  await expect(page).toHaveURL(/\/operator\/sessions\/[0-9a-f-]+$/u);
   await expect(page.getByRole("heading", { name: "Сессия тренировки" })).toBeVisible();
   await expect(page.getByText("Статус: stopped").first()).toBeVisible();
 
@@ -90,12 +90,15 @@ test("MVP happy path uses authoritative simulation state", async ({ page }) => {
   await expect(page.getByText("Статус: running").first()).toBeVisible();
   await expect(page.getByRole("cell", { name: "Принята" }).first()).toBeVisible();
 
+  // This action is intentionally outside the expected startup sequence and must be assessed.
   await page.getByRole("button", { name: "Остановить steam_supply_pump" }).click();
   await expect(page.getByText("Статус: stopped").first()).toBeVisible();
 
   await page.getByRole("button", { name: "Завершить сессию" }).click();
-  await expect(page).toHaveURL(/\/operator\/simulators/u);
-  await expect(page.getByRole("heading", { name: "Тренажёры" })).toBeVisible();
+  await expect(page).toHaveURL(/\/operator\/sessions\/[0-9a-f-]+\/result$/u);
+  await expect(page.getByRole("heading", { name: "Итоговый разбор сессии" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ошибки с объяснениями" })).toBeVisible();
+  await expect(page.getByText("Рекомендованная следующая тренировка")).toBeVisible();
 });
 
 test("forbidden routes are blocked by role guards", async ({ page }) => {
@@ -129,7 +132,7 @@ test("simulation unavailable is shown without local state changes", async ({ pag
     }
     await route.continue();
   });
-  await page.getByRole("button", { name: "Начать тренировку" }).click();
+  await page.getByRole("button", { name: "Начать" }).click();
   await expect(page.getByText("Сервис моделирования сейчас недоступен.")).toBeVisible();
 });
 
@@ -139,4 +142,5 @@ test("service logs do not expose e2e secrets", async () => {
   expect(logs).not.toContain(operatorPassword);
   expect(logs).not.toContain("access_token");
   expect(logs).not.toContain("refresh_token");
+  expect(logs).not.toContain("AI_LLM_API_KEY");
 });
