@@ -16,13 +16,13 @@ def test_recommendations_prioritize_sequence_and_reaction_errors() -> None:
             OperatorErrorType.WRONG_SEQUENCE.value: 2,
             OperatorErrorType.LATE_ACTION.value: 1,
         },
-        weakest_skill="sequence",
+        weakest_skill="procedure_sequence",
         recent_scores=[70.0, 74.0, 72.0],
     )
 
     recommendations = build_recommendations(profile)
 
-    assert [item.focus for item in recommendations] == ["sequence", "reaction_time"]
+    assert [item.focus for item in recommendations] == ["procedure_sequence", "reaction_speed"]
     assert [item.priority for item in recommendations] == [1, 2]
 
 

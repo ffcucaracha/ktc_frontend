@@ -13,7 +13,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
-import { Link as RouterLink, useNavigate, useParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
   describeSessionFailure,
@@ -32,6 +32,8 @@ export function OperatorSimulatorDetailPage(): JSX.Element {
   const { simulatorId } = useParams();
   const resolvedSimulatorId = simulatorId ?? "";
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedScenarioCode = searchParams.get("scenario");
   const creationInFlightRef = useRef(false);
   const [sessionFailure, setSessionFailure] = useState<string | null>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState("");
@@ -41,10 +43,14 @@ export function OperatorSimulatorDetailPage(): JSX.Element {
   const createSessionMutation = useCreateSimulationSessionMutation();
 
   useEffect(() => {
-    if (selectedScenarioId.length === 0 && scenariosQuery.data?.length) {
-      setSelectedScenarioId(scenariosQuery.data[0].id);
+    if (selectedScenarioId.length !== 0 || !scenariosQuery.data?.length) {
+      return;
     }
-  }, [scenariosQuery.data, selectedScenarioId]);
+    const requestedScenario = requestedScenarioCode
+      ? scenariosQuery.data.find((item) => item.code === requestedScenarioCode)
+      : undefined;
+    setSelectedScenarioId(requestedScenario?.id ?? scenariosQuery.data[0].id);
+  }, [requestedScenarioCode, scenariosQuery.data, selectedScenarioId]);
 
   if (simulatorId === undefined) {
     return <ErrorView title="Тренажёр не найден" message="Некорректный адрес страницы." />;
@@ -103,6 +109,16 @@ export function OperatorSimulatorDetailPage(): JSX.Element {
       ) : null}
       {scenariosQuery.isError ? (
         <Alert severity="warning">Не удалось загрузить учебные сценарии.</Alert>
+      ) : null}
+      {requestedScenarioCode !== null && scenarios.length > 0 && selectedScenario?.code !== requestedScenarioCode ? (
+        <Alert severity="info">
+          Рекомендованный сценарий больше не активен или не относится к этому тренажёру. Выбран доступный сценарий по умолчанию.
+        </Alert>
+      ) : null}
+      {requestedScenarioCode !== null && selectedScenario?.code === requestedScenarioCode ? (
+        <Alert severity="success">
+          Персональная рекомендация применена: выбран сценарий «{selectedScenario.name}».
+        </Alert>
       ) : null}
       {sessionFailure !== null ? <Alert severity="error">{sessionFailure}</Alert> : null}
       {createSessionMutation.error !== null ? (

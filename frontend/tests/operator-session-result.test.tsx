@@ -97,7 +97,7 @@ vi.mock("../src/entities/training/model/queries", () => ({
       strengths: ["Последовательность действий выполнена уверенно."],
       issues: ["LATE_ACTION"],
       recommendations: ["Повторить тренировку с контролем времени реакции."],
-      recommended_scenario_code: null,
+      recommended_scenario_code: "oil-heating-reaction-time-training",
       error_explanations: [],
     },
     refetch: vi.fn(),
@@ -107,7 +107,7 @@ vi.mock("../src/entities/training/model/queries", () => ({
 import { OperatorSessionResultPage } from "../src/pages/operator-session-result/OperatorSessionResultPage";
 
 describe("OperatorSessionResultPage", () => {
-  it("shows factual error and earlier ML prediction on the result page", () => {
+  it("shows factual error, earlier ML prediction and actionable scenario recommendation", () => {
     render(
       <MemoryRouter initialEntries={["/operator/sessions/session-1/result"]}>
         <Routes>
@@ -124,9 +124,16 @@ describe("OperatorSessionResultPage", () => {
     expect(screen.getByText("1 из 1")).toBeInTheDocument();
     expect(screen.getByText("ML риск")).toBeInTheDocument();
     expect(screen.getByText("Ошибка")).toBeInTheDocument();
-    expect(screen.getAllByText("Поздняя реакция").length).toBeGreaterThan(0);
+    expect(screen.getByText("Поздняя реакция")).toBeInTheDocument();
     expect(
-      screen.getAllByText("Повторить тренировку с контролем времени реакции.").length,
-    ).toBeGreaterThan(0);
+      screen.getByText("Повторить тренировку с контролем времени реакции."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("oil-heating-reaction-time-training")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Перейти к рекомендованной тренировке" }),
+    ).toHaveAttribute(
+      "href",
+      "/operator/simulators/simulator-1?scenario=oil-heating-reaction-time-training",
+    );
   });
 });

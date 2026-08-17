@@ -1,12 +1,15 @@
+from __future__ import annotations
+
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import OperatorError, OperatorErrorType, TrainingResult
+from app.models import OperatorError, OperatorErrorType, TrainingResult, TrainingScenario
 from app.repositories.assessment import AssessmentRepository
 from app.services.skill_profile import SkillProfileService
+from app.services.training_recommendation import TrainingScenarioSelector
 
 
 @dataclass(frozen=True)
@@ -27,12 +30,17 @@ class TrainingRecommendation:
     focus: str
     priority: int
     reason: str
+    scenario_id: UUID | None = None
+    scenario_code: str | None = None
+    scenario_name: str | None = None
 
 
 class TrainingInsightsService:
     def __init__(self, session: AsyncSession) -> None:
+        self._session = session
         self._assessment = AssessmentRepository(session)
         self._skills = SkillProfileService(session)
+        self._scenario_selector = TrainingScenarioSelector(session)
 
     async def list_results(self, operator_id: UUID) -> list[TrainingResult]:
         return await self._assessment.list_results_for_operator(operator_id)
@@ -61,7 +69,33 @@ class TrainingInsightsService:
         operator_id: UUID,
     ) -> list[TrainingRecommendation]:
         profile = await self.build_skill_profile(operator_id)
-        return build_recommendations(profile)
+        recommendations = build_recommendations(profile)
+        results = await self._assessment.list_results_for_operator(operator_id)
+        if not results:
+            return recommendations
+
+        latest_scenario = await self._session.get(TrainingScenario, results[0].scenario_id)
+        if latest_scenario is None:
+            return recommendations
+
+        enriched: list[TrainingRecommendation] = []
+        for recommendation in recommendations:
+            selected = await self._scenario_selector.select_for_focus(
+                simulator_id=latest_scenario.simulator_definition_id,
+                focus=recommendation.focus,
+            )
+            if selected is None:
+                enriched.append(recommendation)
+                continue
+            enriched.append(
+                replace(
+                    recommendation,
+                    scenario_id=selected.id,
+                    scenario_code=selected.code,
+                    scenario_name=selected.name,
+                )
+            )
+        return enriched
 
 
 def _average(values: list[float]) -> float | None:
@@ -83,7 +117,7 @@ def build_skill_profile(
         "safety": _average([item.safety_score for item in final_results]),
     }
     known_skills = {key: value for key, value in skill_averages.items() if value is not None}
-    weakest_skill = min(known_skills, key=known_skills.get) if known_skills else None
+    weakest_skill = min(known_skills, key=lambda key: known_skills[key]) if known_skills else None
 
     return SkillProfile(
         operator_id=operator_id,

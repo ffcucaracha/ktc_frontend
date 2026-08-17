@@ -87,6 +87,9 @@ class TrainingRecommendationResponse(BaseModel):
     focus: str
     priority: int
     reason: str
+    scenario_id: UUID | None = None
+    scenario_code: str | None = None
+    scenario_name: str | None = None
 
 
 class TrainingRecommendationsResponse(BaseModel):

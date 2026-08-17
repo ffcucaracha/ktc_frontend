@@ -49,8 +49,19 @@ class TrainingNarrativeService:
         result: TrainingResult,
         errors: list[OperatorError],
         scenario_code: str | None,
+        recommended_scenario_code: str | None = None,
     ) -> SessionNarrative:
-        fallback = _fallback_session(result, errors)
+        fallback = _fallback_session(
+            result,
+            errors,
+            recommended_scenario_code=recommended_scenario_code,
+        )
+        scenario_metadata: dict[str, object] = {}
+        if scenario_code is not None:
+            scenario_metadata["scenario_code"] = scenario_code
+        if recommended_scenario_code is not None:
+            scenario_metadata["recommended_scenario_code"] = recommended_scenario_code
+
         try:
             debrief = await self._gateway.build_debrief(
                 DebriefRequest(
@@ -73,12 +84,17 @@ class TrainingNarrativeService:
                         for item in errors
                     ],
                     reaction_metrics={"average_reaction_time_ms": result.reaction_time_ms},
-                    scenario_metadata={"scenario_code": scenario_code} if scenario_code else {},
+                    scenario_metadata=scenario_metadata,
                 )
             )
             explanations = [await self._explain(item) for item in errors]
         except AIIntegrationError as exc:
-            return _fallback_session(result, errors, ai_error_code=exc.code.value)
+            return _fallback_session(
+                result,
+                errors,
+                recommended_scenario_code=recommended_scenario_code,
+                ai_error_code=exc.code.value,
+            )
 
         generated_by = "rules" if _is_fallback_model(debrief.model) else debrief.model
         return SessionNarrative(
@@ -88,7 +104,9 @@ class TrainingNarrativeService:
             strengths=debrief.strengths or fallback.strengths,
             issues=debrief.weaknesses or fallback.issues,
             recommendations=debrief.priority_actions or fallback.recommendations,
-            recommended_scenario_code=debrief.recommended_scenario_code,
+            # Scenario selection belongs to deterministic personalization. LLM may verbalize it,
+            # but cannot invent or override the scenario chosen from active backend scenarios.
+            recommended_scenario_code=recommended_scenario_code,
             error_explanations=explanations,
         )
 
@@ -123,6 +141,7 @@ def _fallback_session(
     result: TrainingResult,
     errors: list[OperatorError],
     *,
+    recommended_scenario_code: str | None = None,
     ai_error_code: str | None = None,
 ) -> SessionNarrative:
     issue_types = sorted({item.error_type.value for item in errors})
@@ -153,7 +172,7 @@ def _fallback_session(
         strengths=strengths,
         issues=issue_types,
         recommendations=recommendations,
-        recommended_scenario_code=None,
+        recommended_scenario_code=recommended_scenario_code,
         error_explanations=[],
         ai_error_code=ai_error_code,
     )

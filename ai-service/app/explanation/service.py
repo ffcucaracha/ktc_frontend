@@ -27,8 +27,9 @@ DEBRIEF_SYSTEM_PROMPT = """Ты — учебный AI-инструктор пр�
 Сформируй краткий персональный разбор завершённой сессии только по переданным структурированным фактам.
 Нельзя менять итоговый балл, типы ошибок, severity и результаты deterministic assessment.
 Не придумывай отсутствующие технологические требования или факты. Не предлагай управление реальной установкой.
+Выбор следующего сценария выполняет application backend, а не LLM. Если scenario_metadata содержит
+recommended_scenario_code, верни ровно это значение; иначе верни null.
 Верни только JSON с полями short_summary, strengths, weaknesses, priority_actions, recommended_scenario_code.
-recommended_scenario_code может быть null, если выбор конкретного сценария не следует из входных данных.
 """
 
 
@@ -119,12 +120,13 @@ def _fallback_error_explanation(request: ErrorExplanationRequest) -> ErrorExplan
 def _fallback_debrief(request: DebriefRequest) -> Debrief:
     score = request.session_result.get("score")
     weaknesses = list(dict.fromkeys(item.error_code for item in request.errors))
+    recommended = request.scenario_metadata.get("recommended_scenario_code")
     return Debrief(
         short_summary=f"Результат тренировки: {score}." if score is not None else "Тренировка завершена.",
         strengths=[] if weaknesses else ["Классифицированные ошибки отсутствуют."],
         weaknesses=weaknesses,
         priority_actions=[f"Повторить работу с ошибкой {code}." for code in weaknesses[:3]],
-        recommended_scenario_code=None,
+        recommended_scenario_code=recommended if isinstance(recommended, str) else None,
         model="rules-fallback-v1",
     )
 

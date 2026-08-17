@@ -140,10 +140,16 @@ async def get_session_debrief(
         if simulation_session.training_scenario_id is not None
         else None
     )
+    recommendations = await TrainingInsightsService(session).build_recommendations(operator.id)
+    recommended_scenario_code = next(
+        (item.scenario_code for item in recommendations if item.scenario_code is not None),
+        None,
+    )
     narrative = await TrainingNarrativeService(create_ai_gateway(settings)).build(
         result=outcome.result,
         errors=outcome.errors,
         scenario_code=scenario.code if scenario is not None else None,
+        recommended_scenario_code=recommended_scenario_code,
     )
     await AIAuditService(session).record_narrative(
         session_id=session_id,
@@ -221,5 +227,15 @@ async def get_operator_recommendations(
     return TrainingRecommendationsResponse(
         operator_id=operator_id,
         source="rules",
-        items=[TrainingRecommendationResponse(focus=item.focus, priority=item.priority, reason=item.reason) for item in items],
+        items=[
+            TrainingRecommendationResponse(
+                focus=item.focus,
+                priority=item.priority,
+                reason=item.reason,
+                scenario_id=item.scenario_id,
+                scenario_code=item.scenario_code,
+                scenario_name=item.scenario_name,
+            )
+            for item in items
+        ],
     )

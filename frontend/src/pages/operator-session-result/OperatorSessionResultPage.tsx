@@ -121,6 +121,9 @@ export function OperatorSessionResultPage(): JSX.Element {
   const predictedBeforeError = predictionLeadCount(timeline, errors);
   const scorePercent = result.max_score <= 0 ? 0 : Math.max(0, Math.min(100, (result.score / result.max_score) * 100));
   const nextTraining = debrief.recommendations[0] ?? "Закрепить результат повторным прохождением сценария.";
+  const recommendedScenarioPath = debrief.recommended_scenario_code === null
+    ? null
+    : `/operator/simulators/${session.simulator_definition_id}?scenario=${encodeURIComponent(debrief.recommended_scenario_code)}`;
 
   return (
     <Stack spacing={3}>
@@ -240,11 +243,25 @@ export function OperatorSessionResultPage(): JSX.Element {
       </Paper>
 
       <Paper elevation={0} sx={{ border: "1px solid", borderColor: "primary.light", p: 2.5 }}>
-        <Typography variant="overline" color="primary">Рекомендованная следующая тренировка</Typography>
-        <Typography variant="h6" sx={{ mt: 0.5 }}>{nextTraining}</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          Рекомендация сформирована из итоговых ошибок и оценок этой сессии. Выбор конкретного адаптивного сценария будет подключён к персонализации по мере расширения набора сценариев.
-        </Typography>
+        <Stack spacing={1.5} alignItems="flex-start">
+          <Typography variant="overline" color="primary">Рекомендованная следующая тренировка</Typography>
+          <Typography variant="h6">{nextTraining}</Typography>
+          {debrief.recommended_scenario_code === null ? (
+            <Typography variant="body2" color="text.secondary">
+              Для выявленного фокуса пока нет подходящего активного сценария. Рекомендация остаётся учебным направлением и не подменяется frontend-хардкодом.
+            </Typography>
+          ) : (
+            <>
+              <Chip label={debrief.recommended_scenario_code} size="small" />
+              <Typography variant="body2" color="text.secondary">
+                Конкретный сценарий выбран backend из активных сценариев по профилю ошибок. LLM может объяснять рекомендацию, но не выбирает сценарий.
+              </Typography>
+              <Button component={RouterLink} to={recommendedScenarioPath ?? "/operator/simulators"} variant="contained">
+                Перейти к рекомендованной тренировке
+              </Button>
+            </>
+          )}
+        </Stack>
       </Paper>
     </Stack>
   );

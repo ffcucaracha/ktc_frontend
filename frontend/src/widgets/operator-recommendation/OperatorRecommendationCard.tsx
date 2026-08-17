@@ -7,7 +7,7 @@ interface OperatorRecommendationCardProps {
 }
 
 export function OperatorRecommendationCard({ data }: OperatorRecommendationCardProps): JSX.Element {
-  const recommendation = [...data.items].sort((a, b) => b.priority - a.priority)[0];
+  const recommendation = [...data.items].sort((a, b) => a.priority - b.priority)[0];
 
   return (
     <Paper elevation={0} sx={{ border: "1px solid", borderColor: "divider", p: 3 }}>
@@ -22,8 +22,21 @@ export function OperatorRecommendationCard({ data }: OperatorRecommendationCardP
           <>
             <Typography variant="subtitle1">Фокус: {recommendation.focus}</Typography>
             <Typography>{recommendation.reason}</Typography>
+            {recommendation.scenario_code === null ? (
+              <Alert severity="info">
+                Для этого фокуса пока нет подходящего активного сценария в текущем тренажёре.
+              </Alert>
+            ) : (
+              <Stack spacing={0.5}>
+                <Typography variant="body2" color="text.secondary">Рекомендованный сценарий</Typography>
+                <Typography fontWeight={600}>{recommendation.scenario_name}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {recommendation.scenario_code}
+                </Typography>
+              </Stack>
+            )}
             <Typography variant="body2" color="text.secondary">
-              Приоритет: {recommendation.priority}. Конкретный scenario_code будет подключён, когда backend начнёт возвращать выбранный сценарий; интерфейс не подменяет его локальным хардкодом.
+              Приоритет: {recommendation.priority}. Сценарий выбирается backend из активных сценариев и их assessment metadata; LLM не определяет выбор.
             </Typography>
           </>
         )}

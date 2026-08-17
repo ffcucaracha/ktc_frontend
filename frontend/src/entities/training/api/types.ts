@@ -115,6 +115,9 @@ export interface TrainingRecommendation {
   focus: string;
   priority: number;
   reason: string;
+  scenario_id: string | null;
+  scenario_code: string | null;
+  scenario_name: string | null;
 }
 
 export interface TrainingRecommendationsResponse {

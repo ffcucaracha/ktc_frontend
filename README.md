@@ -1,603 +1,388 @@
-# ktc_frontend
+# KTC — компьютерный тренажёр оператора с AI-поддержкой
 
-Веб-приложение для обучения операторов работе с технологической установкой. MVP содержит демонстрационную установку: котёл, насос подачи пара и насос откачки пара.
+Монорепозиторий application-части компьютерного тренажёрного комплекса для обучения операторов технологической установки. Основной демонстрационный контур — блок подогрева сырой нефти перед ЭЛОУ; физическая модель и технологическая динамика находятся в отдельном сервисе `ktc_backend` и подключаются через API.
 
-Проект отвечает за аутентификацию, управление операторами, историю входов, каталог тренажёров, локальные сессии, визуализацию установки и интеграцию с отдельным сервисом моделирования.
+Проект реализует аутентификацию, управление операторами, учебные сценарии, сбор timeline, детерминированную оценку действий, ML-прогноз риска ошибки, LLM-объяснения, профиль навыков и персональные рекомендации следующей тренировки.
 
-> Физическая логика, математическая модель, расчёт параметров, межблокировки и аварийные условия реализуются другим разработчиком в отдельном сервисе. В этом репозитории они не дублируются.
+> Ключевая граница архитектуры: этот репозиторий **не рассчитывает физику процесса, межблокировки и аварийную логику**. Authoritative process state всегда приходит из сервиса моделирования. AI также не имеет права управлять установкой или выставлять фактическую ошибку вместо rules engine.
 
-## 1. Функции MVP
-
-### Администратор
-
-- вход в систему;
-- просмотр, создание, активация и деактивация операторов;
-- сброс пароля оператора;
-- карточка оператора;
-- количество успешных входов;
-- дата последнего успешного входа;
-- история входов оператора.
+## Что умеет MVP
 
 ### Оператор
 
 - вход в систему;
-- просмотр доступных тренажёров;
-- выбор тренажёра «Котёл с двумя насосами»;
-- запуск и завершение сессии;
-- просмотр состояния котла и насосов;
-- запуск и остановка насосов подачи и откачки пара;
-- просмотр pending/accepted/rejected состояния команды;
-- получение обновлений, аварий и ошибок внешнего сервиса.
+- выбор тренажёра и учебного сценария;
+- режимы `training` и `exam`;
+- управление оборудованием через backend;
+- получение authoritative snapshot от цифрового двойника;
+- realtime AI Coach в режиме обучения;
+- скрытие AI-подсказок во время экзамена при сохранении аналитики на backend;
+- итоговая оценка после сессии;
+- timeline действий, ML-прогнозов и фактических ошибок;
+- человекочитаемый debrief;
+- переход к рекомендованному следующему сценарию.
 
-## 2. Не входит в MVP
+### Администратор
 
-- физическая и математическая модель;
-- расчёт давления, температуры и расхода;
-- AI-наставник и оценивание;
-- редактор установки и сценариев;
-- 3D-визуализация;
-- самостоятельная регистрация;
-- восстановление пароля по email.
+- создание, активация и деактивация операторов;
+- сброс пароля;
+- история и статистика входов;
+- история тренировок;
+- средний балл, реакция и критические ошибки;
+- профиль навыков;
+- персональная рекомендация следующей тренировки.
 
-## 3. Архитектура
+### AI-контур
+
+- CatBoost risk prediction на горизонте 10 секунд;
+- feature engineering из telemetry/action history без использования будущих данных;
+- аудит `model_version`, feature version, risk и ошибок AI;
+- OpenAI-compatible LLM для объяснения уже классифицированных ошибок и debrief;
+- deterministic fallback при недоступности AI;
+- RAG предусмотрен архитектурой, но сознательно вынесен за рамки MVP.
+
+## Архитектура
 
 ```mermaid
 flowchart LR
-    F[React frontend] -->|REST и WebSocket| B[FastAPI application backend]
-    B -->|REST-команды| S[External simulation service]
-    S -->|WebSocket events или polling| B
+    U[Operator/Admin] --> F[React + TypeScript]
+    F -->|REST / WebSocket| B[FastAPI application backend]
+    B -->|REST| K[ktc_backend / digital twin]
+    K -->|authoritative telemetry| B
     B --> P[(PostgreSQL)]
+    B -->|AI gateway| A[ai-service]
+    A --> M[CatBoost model]
+    A --> L[OpenAI-compatible LLM]
 ```
 
-Frontend обращается только к application backend. Backend является BFF и anti-corruption layer:
+Разделение ответственности:
 
-- проверяет аутентификацию, роль и владельца сессии;
-- хранит пользователей, историю входов и локальные сессии;
-- передаёт команды внешнему сервису;
-- нормализует внешние DTO и ошибки;
-- сохраняет журнал команд и последний snapshot;
-- транслирует нормализованные события frontend;
-- скрывает адреса и credentials внешнего сервиса.
+```text
+ktc_backend
+  = истина о технологическом процессе
 
-## 4. Стек
+application backend
+  = истина о пользователях, сессиях, сценариях, timeline, assessment и профиле обучения
+
+ai-service
+  = прогноз риска и текстовое объяснение уже проверенных фактов
+```
+
+Полный учебный цикл:
+
+```text
+telemetry + operator actions
+        ↓
+SimulationEvent timeline
+        ↓
+Rules-based AssessmentService
+        ↓
+OperatorError + TrainingResult
+        ↓
+OperatorSkillProfile
+        ↓
+персональная рекомендация сценария
+
+параллельно:
+telemetry window → CatBoost risk prediction → ai.risk.updated
+
+после сессии:
+verified assessment facts → LLM/fallback → debrief
+```
+
+## Стек
 
 ### Frontend
 
-- React + TypeScript strict;
+- React 18 + TypeScript;
 - Vite;
 - React Router;
-- TanStack Query для server state;
-- Zustand для небольшого client state;
+- TanStack Query;
+- Zustand;
 - Material UI;
 - React Hook Form + Zod;
-- SVG для мнемосхемы;
 - Vitest + React Testing Library + MSW;
 - Playwright.
 
-### Backend
+### Application backend
 
 - Python 3.12+;
 - FastAPI + Pydantic v2;
 - SQLAlchemy 2 async + asyncpg;
 - Alembic + PostgreSQL;
 - PyJWT;
-- pwdlib с Argon2;
+- Argon2 через `pwdlib`;
 - httpx + WebSocket;
-- pytest, Ruff, mypy.
+- pytest + Ruff + mypy.
 
-### Инфраструктура
+### AI service
 
-- Docker и Docker Compose;
-- Nginx опционально для production;
-- `.env`;
-- структурированные JSON-логи.
+- Python 3.12+;
+- FastAPI;
+- CatBoost;
+- OpenAI-compatible LLM client;
+- pytest.
 
-Источником истины по версиям являются lock-файлы, а не README.
+### Infrastructure
 
-## 5. Структура репозитория
+- Docker Compose;
+- PostgreSQL 16;
+- отдельные контейнеры frontend, backend, ai-service;
+- внешний/соседний `ktc_backend` для моделирования.
+
+## Структура репозитория
 
 ```text
 .
-├── AGENTS.md
 ├── README.md
-├── CODEX_PROMPTS.md
-├── .env.example
+├── AGENTS.md
+├── AI_INTEGRATION_DECOMPOSITION.md
+├── AI_DEPLOYMENT.md
+├── AI_TESTING.md
+├── MVP_READINESS.md
+├── ДЛЯ_ЛЕНЫ.md
 ├── docker-compose.yml
-├── contracts/
-│   └── simulation-api/
-│       ├── openapi.yaml
-│       ├── websocket-events.md
-│       └── examples/
+├── .env.example
 ├── backend/
-│   ├── pyproject.toml
-│   ├── alembic.ini
-│   ├── alembic/
 │   ├── app/
-│   │   ├── main.py
-│   │   ├── api/v1/endpoints/
-│   │   ├── core/
-│   │   ├── db/
+│   │   ├── api/
+│   │   ├── integrations/
+│   │   │   ├── simulation/
+│   │   │   └── ai/
 │   │   ├── models/
-│   │   ├── schemas/
 │   │   ├── repositories/
-│   │   ├── services/
-│   │   ├── websocket/
-│   │   ├── commands/
-│   │   └── integrations/simulation/
-│   │       ├── base.py
-│   │       ├── dto.py
-│   │       ├── http_gateway.py
-│   │       ├── mock_gateway.py
-│   │       └── factory.py
+│   │   └── services/
 │   └── tests/
-└── frontend/
-    ├── package.json
-    ├── vite.config.ts
-    ├── src/
-    │   ├── app/
-    │   ├── pages/
-    │   ├── widgets/
-    │   ├── features/
-    │   ├── entities/
-    │   └── shared/
+├── frontend/
+│   ├── src/
+│   ├── tests/
+│   └── e2e/
+└── ai-service/
+    ├── README.md
+    ├── ML_RISK_MODEL_RUNBOOK.md
+    ├── app/
+    ├── scripts/
+    ├── datasets/
+    ├── models/
     └── tests/
 ```
 
-## 6. Роли и права
+## Учебные сценарии MVP
 
-| Операция | Admin | Operator |
-|---|---:|---:|
-| Вход и свой профиль | Да | Да |
-| CRUD операторов | Да | Нет |
-| История входов | Да | Нет |
-| Каталог тренажёров | Опционально | Да |
-| Запуск и управление сессией | Нет | Да |
-| Собственная активная сессия | Нет | Да |
+Для блока подогрева нефти seed создаёт:
 
-Проверка прав обязательна на backend. Скрытая кнопка на frontend не является авторизацией.
+- `oil-heating-basic-startup` — базовый запуск H1A → H1B → H1V;
+- `oil-heating-basic-shutdown` — учебная остановка;
+- `oil-heating-flow-control` — работа с FRC404/FRC405/FRC406;
+- `oil-heating-wrong-sequence-training` — отработка порядка операций;
+- `oil-heating-reaction-time-training` — сокращённые допустимые интервалы реакции.
 
-## 7. Аутентификация
+Также сохранён демонстрационный `boiler-demo` с двумя насосами для mock-разработки.
 
-- логин по `username` и паролю;
-- короткоживущий access JWT;
-- access token хранится только в памяти frontend;
-- refresh token передаётся в `HttpOnly`, `Secure`, `SameSite=Lax` cookie;
-- refresh token ротируется;
-- в БД хранится hash refresh token;
-- logout отзывает текущий refresh token;
-- деактивированный пользователь не может login/refresh;
-- ошибка входа не раскрывает существование пользователя.
+Сценарий хранит expected actions, допустимую задержку, ограничения payload и assessment metadata. Физические последствия действий сценарий не рассчитывает.
 
-Первый администратор создаётся CLI-командой, без пароля в Git:
+## Assessment и ошибки
+
+Фактические ошибки определяет `AssessmentService` по сохранённому timeline. Для MVP используются категории:
+
+```text
+WRONG_ACTION
+LATE_ACTION
+MISSED_ACTION
+WRONG_SEQUENCE
+```
+
+Для каждой сессии формируются:
+
+- `TrainingResult`;
+- `OperatorError[]`;
+- оценки sequence/reaction/safety;
+- reaction time;
+- итоговый score;
+- профиль компетенций оператора.
+
+LLM не определяет тип ошибки и не изменяет итоговый score.
+
+## Персонализация
+
+После завершения сессии событие `session.completed` обрабатывается отдельным post-session processor:
+
+```text
+session.completed
+  → final assessment
+  → rebuild OperatorSkillProfile
+  → recommendations
+```
+
+Обработка идемпотентна и допускает повторные попытки. Ошибка аналитики не отменяет завершение тренировки.
+
+Для следующей тренировки backend выбирает **конкретный активный сценарий** на основании assessment metadata и приоритетного навыка. LLM может объяснить рекомендацию, но не выбирает scenario code.
+
+## ML risk prediction
+
+`ai-service` прогнозирует бинарный target:
+
+```text
+ERROR_IN_NEXT_10_SECONDS = 0 / 1
+```
+
+Используются признаки давления, температуры, насосов, регуляторов, alarms, последних действий и предыдущих ошибок. Feature extraction использует только информацию, доступную к моменту прогноза.
+
+Без обученной модели сервис остаётся healthy и возвращает явный fallback `risk-model-unavailable-v1`.
+
+Полный процесс подготовки данных и обучения описан в:
+
+- `ai-service/ML_RISK_MODEL_RUNBOOK.md`;
+- `ai-service/README.md`.
+
+Экспорт накопленных сессий:
 
 ```bash
-uv run python -m app.commands.create_admin
+cd backend
+python -m app.commands.export_ml_sessions --output /tmp/session_exports.jsonl
 ```
 
-## 8. Модели данных
+Далее:
 
-### User
+```bash
+cd ../ai-service
+python -m scripts.generate_dataset /tmp/session_exports.jsonl datasets/risk.csv
+python -m scripts.train_risk_model datasets/risk.csv
+```
+
+Большие datasets и бинарные модели намеренно не коммитятся.
+
+## LLM и RAG
+
+LLM используется только для:
+
+- объяснения уже выявленной ошибки;
+- учебной рекомендации;
+- итогового debrief.
+
+По умолчанию LLM выключена. Поддерживается OpenAI-compatible endpoint.
+
+RAG в MVP не реализован. Следующее расширение:
 
 ```text
-id UUID
-username string unique
-full_name string
-role admin | operator
-password_hash string
-is_active boolean
-created_at timestamptz
-updated_at timestamptz
+технологические документы
+→ chunks
+→ embeddings
+→ vector store
+→ retrieval по контексту ошибки
+→ LLM explanation
+→ source_id / раздел / страница
 ```
 
-### RefreshToken
+Это позволит обосновывать объяснение конкретным пунктом регламента без переноса технологической логики в LLM.
+
+## Fail-open
+
+AI не является single point of failure.
+
+Если `ai-service` или LLM недоступны:
 
 ```text
-id UUID
-user_id UUID
- token_hash string
-expires_at timestamptz
-revoked_at timestamptz nullable
-replaced_by_id UUID nullable
-created_at timestamptz
+цифровой двойник продолжает работать
+команды оператора продолжают работать
+telemetry продолжает собираться
+rules assessment продолжает работать
+AI hints временно отсутствуют
+LLM debrief заменяется deterministic fallback
 ```
 
-### LoginEvent
+Realtime prediction имеет отдельный короткий timeout.
+
+## Основные API
+
+REST prefix: `/api/v1`.
+
+### Auth / operators
 
 ```text
-id UUID
-user_id UUID nullable
-username_entered string
-success boolean
-failure_reason enum nullable
-occurred_at timestamptz
-ip_address inet nullable
-user_agent text nullable
+POST /auth/login
+POST /auth/refresh
+POST /auth/logout
+GET  /auth/me
+
+GET  /operators
+POST /operators
+GET  /operators/{operator_id}
+PATCH /operators/{operator_id}
+GET  /operators/{operator_id}/login-history
+GET  /operators/{operator_id}/login-stats
+GET  /operators/{operator_id}/training-results
+GET  /operators/{operator_id}/skill-profile
+GET  /operators/{operator_id}/recommendations
 ```
 
-### SimulatorDefinition
+### Simulation / training
 
 ```text
-id UUID
-code string unique
-external_id string
-name string
-description text
-visualization_type string
-is_active boolean
+GET  /simulators
+GET  /simulators/{simulator_id}
+GET  /simulators/{simulator_id}/scenarios
+POST /simulation-sessions
+GET  /simulation-sessions/{session_id}
+GET  /simulation-sessions/{session_id}/state
+POST /simulation-sessions/{session_id}/commands
+POST /simulation-sessions/{session_id}/stop
+GET  /simulation-sessions/{session_id}/assessment
+GET  /simulation-sessions/{session_id}/errors
+GET  /simulation-sessions/{session_id}/timeline
+GET  /simulation-sessions/{session_id}/debrief
 ```
-
-Seed MVP:
-
-```text
-code: boiler-demo
-external_id: boiler-001
-name: Котёл с двумя насосами
-visualization_type: boiler-v1
-```
-
-### SimulationSession
-
-```text
-id UUID
-operator_id UUID
-simulator_definition_id UUID
-external_session_id string nullable
-status creating | active | stopping | completed | failed
-started_at timestamptz nullable
-ended_at timestamptz nullable
-last_state JSONB nullable
-error_code string nullable
-error_message text nullable
-created_at timestamptz
-updated_at timestamptz
-```
-
-### SimulationCommand
-
-```text
-id UUID
-session_id UUID
-command_id UUID unique
-equipment_id string
-action string
-payload JSONB
-status pending | accepted | rejected | failed
-external_error_code string nullable
-external_error_message text nullable
-created_at timestamptz
-completed_at timestamptz nullable
-```
-
-## 9. Локальное API
-
-Префикс REST: `/api/v1`.
-
-### Auth
-
-| Method | Path |
-|---|---|
-| POST | `/auth/login` |
-| POST | `/auth/refresh` |
-| POST | `/auth/logout` |
-| GET | `/auth/me` |
-
-### Operators
-
-| Method | Path |
-|---|---|
-| GET | `/operators` |
-| POST | `/operators` |
-| GET | `/operators/{operator_id}` |
-| PATCH | `/operators/{operator_id}` |
-| POST | `/operators/{operator_id}/reset-password` |
-| GET | `/operators/{operator_id}/login-history` |
-| GET | `/operators/{operator_id}/login-stats` |
-
-### Simulators and sessions
-
-| Method | Path |
-|---|---|
-| GET | `/simulators` |
-| GET | `/simulators/{simulator_id}` |
-| POST | `/simulation-sessions` |
-| GET | `/simulation-sessions/{session_id}` |
-| GET | `/simulation-sessions/{session_id}/state` |
-| POST | `/simulation-sessions/{session_id}/commands` |
-| POST | `/simulation-sessions/{session_id}/stop` |
 
 WebSocket:
 
 ```text
 /ws/v1/simulation-sessions/{session_id}
+/ws/v1/simulation-sessions/{session_id}/training
 ```
 
-WebSocket разрешён только владельцу сессии.
+Доступ к операторской сессии проверяется на backend по владельцу.
 
-## 10. Контракт с simulation service
+## Локальный запуск
 
-Контракт фиксируется в `contracts/simulation-api/openapi.yaml` и `websocket-events.md`. Фактические URL согласовываются с разработчиком модуля моделирования.
-
-Минимальные операции внешнего сервиса:
-
-```text
-POST /v1/sessions
-GET  /v1/sessions/{external_session_id}/state
-POST /v1/sessions/{external_session_id}/commands
-POST /v1/sessions/{external_session_id}/stop
-WS   /v1/sessions/{external_session_id}/events
-```
-
-### Создание сессии
-
-```json
-{
-  "simulator_id": "boiler-001",
-  "operator_id": "06b14858-8023-4916-88dc-4b44d705086c",
-  "metadata": {
-    "local_session_id": "e26e496f-4200-4c9c-b105-aaea54ac8958"
-  }
-}
-```
-
-Пример ответа:
-
-```json
-{
-  "session_id": "external-session-123",
-  "status": "active",
-  "state": {
-    "revision": 1,
-    "simulation_time_ms": 0,
-    "boiler": {
-      "temperature_c": 100.0,
-      "pressure_bar": 1.0,
-      "status": "idle"
-    },
-    "equipment": {
-      "steam_supply_pump": {"status": "stopped", "flow_kg_h": 0},
-      "steam_exhaust_pump": {"status": "stopped", "flow_kg_h": 0}
-    },
-    "alarms": []
-  }
-}
-```
-
-### Команда
-
-```json
-{
-  "command_id": "735f13c8-6700-4ad6-b86b-f5d2e8b683d3",
-  "equipment_id": "steam_supply_pump",
-  "action": "start",
-  "payload": {},
-  "expected_revision": 1
-}
-```
-
-Допустимые команды MVP:
-
-```text
-steam_supply_pump: start, stop
-steam_exhaust_pump: start, stop
-```
-
-HTTP `accepted` означает только принятие команды. Состояние UI изменяется после нового авторитетного snapshot/event.
-
-## 11. Нормализованный state
-
-```json
-{
-  "revision": 12,
-  "simulation_time_ms": 45000,
-  "boiler": {
-    "temperature_c": 122.4,
-    "pressure_bar": 1.8,
-    "status": "running"
-  },
-  "equipment": {
-    "steam_supply_pump": {"status": "running", "flow_kg_h": 120},
-    "steam_exhaust_pump": {"status": "stopped", "flow_kg_h": 0}
-  },
-  "alarms": [
-    {
-      "code": "PRESSURE_HIGH",
-      "severity": "warning",
-      "message": "Повышенное давление",
-      "active": true
-    }
-  ]
-}
-```
-
-Статусы насоса:
-
-```text
-stopped, starting, running, stopping, fault, unavailable
-```
-
-Внешние значения преобразуются адаптером во внутренние enum.
-
-## 12. WebSocket-события frontend
-
-Типы MVP:
-
-```text
-session.ready
-state.snapshot
-state.patch
-command.accepted
-command.rejected
-alarm.raised
-alarm.cleared
-integration.error
-session.completed
-session.failed
-```
-
-Пример:
-
-```json
-{
-  "type": "command.rejected",
-  "data": {
-    "command_id": "735f13c8-6700-4ad6-b86b-f5d2e8b683d3",
-    "code": "INTERLOCK_ACTIVE",
-    "message": "Команда заблокирована внешним сервисом"
-  }
-}
-```
-
-## 13. Реакция на действие оператора
-
-```mermaid
-sequenceDiagram
-    participant U as Operator
-    participant F as React
-    participant B as FastAPI
-    participant S as Simulation service
-
-    U->>F: Нажимает «Запустить»
-    F->>F: pending и блокировка дубля
-    F->>B: POST command
-    B->>B: RBAC, ownership, command journal
-    B->>S: Передаёт command_id и команду
-    S-->>B: accepted или rejected
-    B-->>F: HTTP-результат
-    S-->>B: state.snapshot/state.patch
-    B->>B: Обновляет last_state
-    B-->>F: WebSocket state
-    F->>F: Обновляет SVG
-```
-
-Правила frontend:
-
-- не применять состояние оптимистично;
-- после клика показывать pending;
-- блокировать повтор той же команды;
-- при rejected показывать причину;
-- при timeout не менять оборудование;
-- после reconnect запрашивать snapshot;
-- игнорировать state с меньшим `revision`;
-- не вычислять технологические параметры.
-
-## 14. Визуализация
-
-SVG-экран содержит:
-
-- котёл;
-- насос подачи пара и входную линию;
-- насос откачки пара и выходную линию;
-- температуру и давление;
-- статус сессии и соединения;
-- активные аварии;
-- кнопки start/stop;
-- журнал последних команд.
-
-Пример структуры:
-
-```text
-widgets/boiler-simulator/
-├── BoilerSimulator.tsx
-├── BoilerScheme.tsx
-├── Pump.tsx
-├── Gauge.tsx
-├── AlarmPanel.tsx
-├── CommandLog.tsx
-└── __tests__/
-```
-
-Состояние передаётся не только цветом: нужны текст, иконка и `aria-label`.
-
-## 15. SimulationGateway
-
-```python
-class SimulationGateway(Protocol):
-    async def create_session(...) -> ExternalSession: ...
-    async def get_state(...) -> SimulationState: ...
-    async def send_command(...) -> CommandResult: ...
-    async def stop_session(...) -> None: ...
-    async def stream_events(...) -> AsyncIterator[SimulationEvent]: ...
-```
-
-Реализации:
-
-- `HttpSimulationGateway` — реальный сервис;
-- `MockSimulationGateway` — локальная разработка и тесты.
-
-Mock может переключать только статус выбранного насоса и выдавать подготовленные события. Он не рассчитывает давление, температуру и расход.
-
-## 16. Ошибки интеграции
-
-Внутренние коды:
-
-```text
-SIMULATION_SERVICE_UNAVAILABLE
-SIMULATION_TIMEOUT
-SIMULATION_PROTOCOL_ERROR
-SIMULATION_SESSION_NOT_FOUND
-COMMAND_REJECTED
-STALE_STATE_REVISION
-INVALID_EXTERNAL_PAYLOAD
-```
-
-Требования к HTTP-клиенту:
-
-- connect/read timeout;
-- connection pool;
-- correlation ID;
-- логирование duration/status без secrets;
-- retry только безопасных идемпотентных операций;
-- уникальный `command_id` как idempotency key;
-- нормализация внешних ошибок.
-
-## 17. Конфигурация
-
-```dotenv
-APP_ENV=local
-APP_NAME=ktc_frontend
-LOG_LEVEL=INFO
-DATABASE_URL=postgresql+asyncpg://trainer:trainer@postgres:5432/trainer
-JWT_SECRET=change-me-in-local-development-only-32-bytes
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_TTL_MINUTES=15
-REFRESH_TOKEN_TTL_DAYS=14
-COOKIE_SECURE=false
-CORS_ORIGINS=http://localhost:5173
-SIMULATION_GATEWAY_MODE=mock
-SIMULATION_API_BASE_URL=http://simulation-service:8080
-SIMULATION_WS_BASE_URL=ws://simulation-service:8080
-SIMULATION_API_KEY=change-me
-KTC_API_BASE_URL=http://ktc-backend:8000
-SIMULATION_CONNECT_TIMEOUT_SECONDS=3
-SIMULATION_READ_TIMEOUT_SECONDS=10
-VITE_API_BASE_URL=http://localhost:8000/api/v1
-VITE_WS_BASE_URL=ws://localhost:8000/ws/v1
-```
-
-## 18. Запуск
+Требуется соседний каталог `../ktc_backend`, так как compose собирает сервис моделирования из него.
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-Compose поднимает PostgreSQL, backend, frontend и `ktc_backend`. Backend при старте применяет
-Alembic migrations, идемпотентно создаёт тренажёры, тестовых пользователей и работает с
-`SIMULATION_GATEWAY_MODE=mock` для первого тренажёра.
-
-Адреса локального стенда:
+Локальные адреса:
 
 ```text
-Frontend: http://localhost:5173
-Backend health: http://localhost:8000/health/ready
-KTC backend: http://localhost:8001
-PostgreSQL: localhost:55439
+Frontend:       http://localhost:5173
+Backend ready:  http://localhost:8000/health/ready
+KTC backend:    http://localhost:8001
+AI service:     http://localhost:8090
+PostgreSQL:     localhost:55439
 ```
 
-Тестовые пользователи создаются командой `app.commands.seed_e2e_admin` из переменных
-`E2E_ADMIN_*` и `E2E_OPERATOR_*`.
+По умолчанию:
 
-Backend без Docker:
+```env
+AI_ENABLED=true
+AI_GATEWAY_MODE=mock
+AI_LLM_MODE=disabled
+RAG_ENABLED=false
+```
+
+Для реального ML через `ai-service`:
+
+```env
+AI_ENABLED=true
+AI_GATEWAY_MODE=http
+AI_SERVICE_BASE_URL=http://ai-service:8090
+```
+
+Подробнее: `AI_DEPLOYMENT.md`.
+
+## Запуск без Docker
+
+Backend:
 
 ```bash
 cd backend
@@ -616,83 +401,66 @@ npm ci
 npm run dev
 ```
 
-E2E стенд:
+AI service:
 
 ```bash
-cp .env.example .env
-docker compose up --build -d
-cd frontend
-npm install
-npm run e2e
+cd ai-service
+python -m venv .venv
+. .venv/bin/activate
+pip install -e '.[dev]'
+uvicorn app.main:app --reload --port 8090
 ```
 
-Playwright setup ждёт `/health/ready` и frontend, затем создаёт admin через backend CLI.
-Пароли берутся из `E2E_ADMIN_PASSWORD` и `E2E_OPERATOR_PASSWORD`; они не логируются приложением.
+## Проверки
 
-## 19. Проверки
-
-Backend:
+Backend unit/contract:
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy app
-uv run pytest
+cd backend
+pytest
+ruff check app tests
+mypy app
+```
+
+Backend PostgreSQL integration:
+
+```bash
+RUN_POSTGRES_TESTS=1 \
+TEST_DATABASE_URL=postgresql+asyncpg://trainer:trainer@localhost:55439/trainer \
+pytest
+```
+
+AI service:
+
+```bash
+cd ai-service
+pytest
 ```
 
 Frontend:
 
 ```bash
-npm run lint
+cd frontend
+npm test
 npm run typecheck
-npm run test
+npm run lint
 npm run build
 npm run e2e
 ```
 
-Полный локальный прогон через Docker:
+Описание критических проверок: `AI_TESTING.md`.
 
-```bash
-docker compose up --build -d
-cd backend
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy app
-RUN_POSTGRES_TESTS=1 TEST_DATABASE_URL=postgresql+asyncpg://trainer:trainer@localhost:55439/trainer uv run pytest
-cd ../frontend
-npm run lint
-npm run typecheck
-npm run test
-npm run build
-npm run e2e
-```
+## Документация
 
-## 20. Критические тесты
+- `AI_INTEGRATION_DECOMPOSITION.md` — исходная декомпозиция AI-интеграции;
+- `ai-service/ML_RISK_MODEL_RUNBOOK.md` — сбор данных, dataset и обучение CatBoost;
+- `AI_DEPLOYMENT.md` — режимы запуска и environment;
+- `AI_TESTING.md` — test matrix;
+- `MVP_READINESS.md` — итоговый чек-лист и внешние prerequisites;
+- `ДЛЯ_ЛЕНЫ.md` — материалы для презентации, включая план RAG после MVP.
 
-- login success/failure/inactive;
-- refresh rotation и logout;
-- RBAC;
-- admin создаёт и деактивирует оператора;
-- login history и stats;
-- operator получает каталог и создаёт сессию;
-- ownership сессии;
-- command accepted/rejected/timeout;
-- WebSocket auth и reconnect;
-- stale revision;
-- E2E: admin создаёт operator, operator входит, запускает насос и получает authoritative state.
+## Что ещё требуется для полноценной демонстрации ML
 
-## 21. Definition of Done MVP
+Кодовый контур MVP собран, но **обученный CatBoost artifact намеренно не находится в Git**. Для реального ненулевого прогноза необходимо накопить/экспортировать репрезентативные сессии цифрового двойника, обучить модель по runbook и поместить `.cbm` + metadata в `ai-service/models/`.
 
-- запуск одной командой Docker Compose;
-- миграции применяются на чистой БД;
-- admin создаётся CLI-командой;
-- admin управляет операторами и видит историю входов;
-- operator открывает boiler-demo;
-- mock и HTTP gateway реализуют один интерфейс;
-- frontend не знает внешний формат simulation service;
-- команды обоих насосов проходят полный путь;
-- состояние приходит через WebSocket;
-- ошибки нормализуются;
-- backend/frontend/E2E тесты проходят;
-- в коде нет физической модели;
-- secrets и временные пароли не попадают в Git и логи.
+Также перед защитой необходимо фактически прогнать backend/frontend/AI/E2E тесты на целевой машине и проверить реальные имена/единицы telemetry, поступающие из актуальной версии `ktc_backend`.
