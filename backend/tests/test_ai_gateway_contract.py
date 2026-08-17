@@ -1,9 +1,11 @@
+import asyncio
 from uuid import uuid4
 
 import httpx
 import pytest
 
 from app.integrations.ai.dto import RiskPredictionRequest
+from app.integrations.ai.errors import AIIntegrationError, AIIntegrationErrorCode
 from app.integrations.ai.http_gateway import HttpAIGateway
 from app.integrations.ai.mock_gateway import MockAIGateway
 
@@ -48,3 +50,26 @@ async def test_http_ai_gateway_validates_response_contract() -> None:
     assert response.risk == 0.84
     assert response.predicted_error_code == "LATE_ACTION"
     assert response.features[0].name == "pressure_delta_10s"
+
+
+@pytest.mark.asyncio
+async def test_realtime_prediction_has_independent_short_timeout() -> None:
+    async def handler(_: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.05)
+        return httpx.Response(200, json={})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    gateway = HttpAIGateway(
+        base_url="http://ai-service",
+        prediction_timeout_seconds=0.01,
+        client=client,
+    )
+    try:
+        with pytest.raises(AIIntegrationError) as error:
+            await gateway.predict_risk(
+                RiskPredictionRequest(session_id=uuid4(), scenario_code="oil-heating-basic-startup")
+            )
+    finally:
+        await client.aclose()
+
+    assert error.value.code == AIIntegrationErrorCode.AI_TIMEOUT

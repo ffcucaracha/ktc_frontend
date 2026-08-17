@@ -26,6 +26,7 @@ from app.repositories.simulation_sessions import SimulationSessionRepository
 
 WINDOW_MS = 10_000
 RECENT_EVENT_LIMIT = 200
+FEATURE_VERSION = "risk-features-v1"
 
 
 class RealtimeAIService:
@@ -55,10 +56,7 @@ class RealtimeAIService:
         if simulation_session.training_scenario_id is None:
             return None
 
-        scenario = await self._session.get(
-            TrainingScenario,
-            simulation_session.training_scenario_id,
-        )
+        scenario = await self._session.get(TrainingScenario, simulation_session.training_scenario_id)
         if scenario is None:
             return None
 
@@ -125,13 +123,15 @@ class RealtimeAIService:
                 recent_actions=recent_actions,
             )
         )
+        payload = prediction.model_dump(mode="json")
+        payload["feature_version"] = FEATURE_VERSION
         await self._events.create_event(
             session_id=session_id,
             event_type=SimulationTimelineEventType.AI_RISK_UPDATED,
             source=SimulationEventSource.AI,
             revision=latest.revision,
             simulation_time_ms=latest_time_ms,
-            payload=prediction.model_dump(mode="json"),
+            payload=payload,
         )
         await self._session.commit()
         return prediction
@@ -150,11 +150,7 @@ def _telemetry_point(event: SimulationEvent) -> TelemetryPoint | None:
     pumps = _bool_mapping(process_map.get("pumps"))
     regulators = _numeric_mapping(process_map.get("regulators"))
     alarms_value = payload.get("alarms")
-    alarms = (
-        [item for item in alarms_value if isinstance(item, dict)]
-        if isinstance(alarms_value, list)
-        else []
-    )
+    alarms = [item for item in alarms_value if isinstance(item, dict)] if isinstance(alarms_value, list) else []
 
     return TelemetryPoint(
         simulation_time_ms=simulation_time_ms,
@@ -185,11 +181,7 @@ def _numeric_mapping(value: object) -> dict[str, float]:
         return {}
     result: dict[str, float] = {}
     for key, item in value.items():
-        if (
-            isinstance(key, str)
-            and isinstance(item, (int, float))
-            and not isinstance(item, bool)
-        ):
+        if isinstance(key, str) and isinstance(item, (int, float)) and not isinstance(item, bool):
             result[key] = float(item)
     return result
 
@@ -197,8 +189,4 @@ def _numeric_mapping(value: object) -> dict[str, float]:
 def _bool_mapping(value: object) -> dict[str, bool]:
     if not isinstance(value, dict):
         return {}
-    return {
-        key: item
-        for key, item in value.items()
-        if isinstance(key, str) and isinstance(item, bool)
-    }
+    return {key: item for key, item in value.items() if isinstance(key, str) and isinstance(item, bool)}

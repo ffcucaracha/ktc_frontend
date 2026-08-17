@@ -11,6 +11,7 @@ from app.integrations.simulation.base import SimulationGateway
 from app.integrations.simulation.errors import SimulationIntegrationError
 from app.models import SimulationSession
 from app.repositories.simulation_sessions import SimulationSessionRepository
+from app.services.ai_audit import AIAuditService
 from app.services.realtime_ai import RealtimeAIService
 from app.services.simulation import (
     InvalidSessionOperationError,
@@ -26,9 +27,7 @@ SleepFunc = Callable[[float], Awaitable[None]]
 class SimulationTelemetryCollector:
     """Collect simulation state on the backend while sessions are active.
 
-    MVP implementation: one asyncio task per active session in the FastAPI process.
-    For horizontal scaling this collector should be moved to a dedicated worker/task queue
-    so that exactly one worker owns each simulation session.
+    AI is best-effort: telemetry and operator commands remain independent from AI availability.
     """
 
     def __init__(
@@ -57,10 +56,7 @@ class SimulationTelemetryCollector:
     async def start(self) -> None:
         if self.is_running:
             return
-        self._supervisor_task = asyncio.create_task(
-            self._supervise(),
-            name="simulation-telemetry-supervisor",
-        )
+        self._supervisor_task = asyncio.create_task(self._supervise(), name="simulation-telemetry-supervisor")
 
     async def stop(self) -> None:
         supervisor = self._supervisor_task
@@ -75,19 +71,16 @@ class SimulationTelemetryCollector:
             while True:
                 active_sessions = await self._load_active_sessions()
                 active_ids = {item.id for item in active_sessions}
-
                 for simulation_session in active_sessions:
                     if simulation_session.external_session_id is None:
                         continue
                     task = self._session_tasks.get(simulation_session.id)
                     if task is None or task.done():
                         self._start_session_task(simulation_session)
-
                 for session_id, task in list(self._session_tasks.items()):
                     if session_id not in active_ids:
                         task.cancel()
                         self._session_tasks.pop(session_id, None)
-
                 await self._sleep(self._discovery_interval_seconds)
         except asyncio.CancelledError:
             raise
@@ -108,9 +101,7 @@ class SimulationTelemetryCollector:
         )
         self._session_tasks[simulation_session.id] = task
         task.add_done_callback(
-            lambda completed, session_id=simulation_session.id: self._drop_finished_task(
-                session_id, completed
-            )
+            lambda completed, session_id=simulation_session.id: self._drop_finished_task(session_id, completed)
         )
 
     def _drop_finished_task(self, session_id: UUID, completed: asyncio.Task[None]) -> None:
@@ -133,20 +124,22 @@ class SimulationTelemetryCollector:
                     await SimulationService(session, self._gateway).get_state(session_id, operator_id)
                     if self._ai_gateway is not None:
                         try:
-                            await RealtimeAIService(session, self._ai_gateway).predict_and_record(
-                                session_id,
-                                operator_id,
-                            )
+                            await RealtimeAIService(session, self._ai_gateway).predict_and_record(session_id, operator_id)
                         except AIIntegrationError as exc:
                             logger.warning(
                                 "AI risk prediction failed: %s",
                                 exc,
-                                extra={"simulation_session_id": str(session_id)},
+                                extra={"simulation_session_id": str(session_id), "ai_error_code": exc.code.value},
                             )
+                            await AIAuditService(session).record_error(
+                                session_id=session_id,
+                                operation="predict_risk",
+                                error_code=exc.code.value,
+                            )
+                            await session.commit()
             except (SimulationSessionNotFoundError, InvalidSessionOperationError):
                 return
             except StaleStateRevisionError:
-                # Another request/event may already have applied a newer authoritative state.
                 pass
             except SimulationIntegrationError as exc:
                 logger.warning(
@@ -161,7 +154,6 @@ class SimulationTelemetryCollector:
                     "Unexpected simulation telemetry error",
                     extra={"simulation_session_id": str(session_id)},
                 )
-
             await self._sleep(self._polling_interval_seconds)
 
     async def _cancel_all_session_tasks(self) -> None:

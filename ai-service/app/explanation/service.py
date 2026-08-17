@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from pydantic import ValidationError
@@ -12,6 +13,8 @@ from app.schemas.contracts import (
     ErrorExplanation,
     ErrorExplanationRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 ERROR_SYSTEM_PROMPT = """Ты — модуль объяснения ошибок оператора промышленного тренажёра.
 Используй только факты из входного JSON. Не меняй error_code, severity, итоговую оценку и факты assessment.
@@ -51,12 +54,18 @@ class NarrativeService:
                 summary=str(payload["summary"]),
                 explanation=str(payload["explanation"]),
                 recommendation=str(payload["recommendation"]),
-                # RAG is intentionally outside the MVP. Sources remain empty unless explicit
-                # regulation_context was supplied by another trusted backend component.
                 sources=request.regulation_context,
                 model=f"llm:{self._settings.model}",
             )
-        except (LLMClientError, KeyError, TypeError, ValidationError):
+        except (LLMClientError, KeyError, TypeError, ValidationError) as exc:
+            logger.warning(
+                "LLM error explanation failed; deterministic fallback used",
+                extra={
+                    "operation": "explain_error",
+                    "llm_model": self._settings.model,
+                    "error_type": type(exc).__name__,
+                },
+            )
             return fallback
 
     async def build_debrief(self, request: DebriefRequest) -> Debrief:
@@ -80,7 +89,15 @@ class NarrativeService:
                 ),
                 model=f"llm:{self._settings.model}",
             )
-        except (LLMClientError, KeyError, TypeError, ValidationError):
+        except (LLMClientError, KeyError, TypeError, ValidationError) as exc:
+            logger.warning(
+                "LLM debrief failed; deterministic fallback used",
+                extra={
+                    "operation": "build_debrief",
+                    "llm_model": self._settings.model,
+                    "error_type": type(exc).__name__,
+                },
+            )
             return fallback
 
 
@@ -103,9 +120,7 @@ def _fallback_debrief(request: DebriefRequest) -> Debrief:
     score = request.session_result.get("score")
     weaknesses = list(dict.fromkeys(item.error_code for item in request.errors))
     return Debrief(
-        short_summary=(
-            f"Результат тренировки: {score}." if score is not None else "Тренировка завершена."
-        ),
+        short_summary=f"Результат тренировки: {score}." if score is not None else "Тренировка завершена.",
         strengths=[] if weaknesses else ["Классифицированные ошибки отсутствуют."],
         weaknesses=weaknesses,
         priority_actions=[f"Повторить работу с ошибкой {code}." for code in weaknesses[:3]],

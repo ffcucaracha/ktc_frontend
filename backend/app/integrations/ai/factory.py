@@ -13,5 +13,6 @@ def create_ai_gateway(settings: Settings) -> AIGateway:
             base_url=settings.ai_service_base_url,
             connect_timeout_seconds=settings.ai_connect_timeout_seconds,
             read_timeout_seconds=settings.ai_read_timeout_seconds,
+            prediction_timeout_seconds=settings.ai_prediction_timeout_seconds,
         )
     raise ValueError(f"Unsupported AI_GATEWAY_MODE: {settings.ai_gateway_mode}")

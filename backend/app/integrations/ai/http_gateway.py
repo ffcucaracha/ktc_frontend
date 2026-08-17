@@ -1,3 +1,4 @@
+import asyncio
 from typing import TypeVar
 
 import httpx
@@ -25,6 +26,7 @@ class HttpAIGateway:
         base_url: str,
         connect_timeout_seconds: float = 3.0,
         read_timeout_seconds: float = 15.0,
+        prediction_timeout_seconds: float = 0.8,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
@@ -34,10 +36,20 @@ class HttpAIGateway:
             write=read_timeout_seconds,
             pool=connect_timeout_seconds,
         )
+        self._prediction_timeout_seconds = prediction_timeout_seconds
         self._client = client
 
     async def predict_risk(self, request: RiskPredictionRequest) -> RiskPrediction:
-        return await self._post("/v1/predict-risk", request, RiskPrediction)
+        try:
+            return await asyncio.wait_for(
+                self._post("/v1/predict-risk", request, RiskPrediction),
+                timeout=self._prediction_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            raise AIIntegrationError(
+                AIIntegrationErrorCode.AI_TIMEOUT,
+                "AI risk prediction timed out",
+            ) from exc
 
     async def explain_error(self, request: ErrorExplanationRequest) -> ErrorExplanation:
         return await self._post("/v1/explain-error", request, ErrorExplanation)

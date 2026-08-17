@@ -27,6 +27,7 @@ from app.schemas.training import (
     TrainingResultListResponse,
     TrainingResultResponse,
 )
+from app.services.ai_audit import AIAuditService
 from app.services.assessment import (
     AssessmentScenarioRequiredError,
     AssessmentService,
@@ -69,14 +70,8 @@ async def _require_operator_target(session: AsyncSession, operator_id: UUID) -> 
     return user
 
 
-@router.get(
-    "/simulation-sessions/{session_id}/assessment",
-    response_model=TrainingAssessmentResponse,
-)
-@router.post(
-    "/simulation-sessions/{session_id}/assessment",
-    response_model=TrainingAssessmentResponse,
-)
+@router.get("/simulation-sessions/{session_id}/assessment", response_model=TrainingAssessmentResponse)
+@router.post("/simulation-sessions/{session_id}/assessment", response_model=TrainingAssessmentResponse)
 async def get_session_assessment(
     session_id: UUID,
     operator: Annotated[User, Depends(require_operator)],
@@ -88,17 +83,13 @@ async def get_session_assessment(
         raise _session_not_found() from exc
     except AssessmentScenarioRequiredError as exc:
         raise _scenario_required() from exc
-
     return TrainingAssessmentResponse(
         result=TrainingResultResponse.model_validate(outcome.result),
         errors=[OperatorErrorResponse.model_validate(item) for item in outcome.errors],
     )
 
 
-@router.get(
-    "/simulation-sessions/{session_id}/errors",
-    response_model=OperatorErrorsResponse,
-)
+@router.get("/simulation-sessions/{session_id}/errors", response_model=OperatorErrorsResponse)
 async def get_session_errors(
     session_id: UUID,
     operator: Annotated[User, Depends(require_operator)],
@@ -110,52 +101,33 @@ async def get_session_errors(
         raise _session_not_found() from exc
     except AssessmentScenarioRequiredError as exc:
         raise _scenario_required() from exc
-    return OperatorErrorsResponse(
-        items=[OperatorErrorResponse.model_validate(item) for item in outcome.errors]
-    )
+    return OperatorErrorsResponse(items=[OperatorErrorResponse.model_validate(item) for item in outcome.errors])
 
 
-@router.get(
-    "/simulation-sessions/{session_id}/timeline",
-    response_model=SimulationTimelineResponse,
-)
+@router.get("/simulation-sessions/{session_id}/timeline", response_model=SimulationTimelineResponse)
 async def get_session_timeline(
     session_id: UUID,
     operator: Annotated[User, Depends(require_operator)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SimulationTimelineResponse:
-    simulation_session = await SimulationSessionRepository(session).get_for_operator(
-        session_id,
-        operator.id,
-    )
+    simulation_session = await SimulationSessionRepository(session).get_for_operator(session_id, operator.id)
     if simulation_session is None:
         raise _session_not_found()
     events = await SimulationEventRepository(session).list_for_session(session_id)
-    return SimulationTimelineResponse(
-        items=[SimulationTimelineEventResponse.model_validate(item) for item in events]
-    )
+    return SimulationTimelineResponse(items=[SimulationTimelineEventResponse.model_validate(item) for item in events])
 
 
-@router.get(
-    "/simulation-sessions/{session_id}/debrief",
-    response_model=DebriefResponse,
-)
+@router.get("/simulation-sessions/{session_id}/debrief", response_model=DebriefResponse)
 async def get_session_debrief(
     session_id: UUID,
     operator: Annotated[User, Depends(require_operator)],
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> DebriefResponse:
-    simulation_session = await SimulationSessionRepository(session).get_for_operator(
-        session_id,
-        operator.id,
-    )
+    simulation_session = await SimulationSessionRepository(session).get_for_operator(session_id, operator.id)
     if simulation_session is None:
         raise _session_not_found()
-    if (
-        simulation_session.mode == TrainingSessionMode.EXAM
-        and simulation_session.status == SimulationSessionStatus.ACTIVE
-    ):
+    if simulation_session.mode == TrainingSessionMode.EXAM and simulation_session.status == SimulationSessionStatus.ACTIVE:
         raise _exam_hints_unavailable()
 
     try:
@@ -173,6 +145,13 @@ async def get_session_debrief(
         errors=outcome.errors,
         scenario_code=scenario.code if scenario is not None else None,
     )
+    await AIAuditService(session).record_narrative(
+        session_id=session_id,
+        training_result_id=outcome.result.id,
+        narrative=narrative,
+    )
+    await session.commit()
+
     return DebriefResponse(
         session_id=session_id,
         status=outcome.result.status,
@@ -196,10 +175,7 @@ async def get_session_debrief(
     )
 
 
-@router.get(
-    "/operators/{operator_id}/training-results",
-    response_model=TrainingResultListResponse,
-)
+@router.get("/operators/{operator_id}/training-results", response_model=TrainingResultListResponse)
 async def get_operator_training_results(
     operator_id: UUID,
     admin: Annotated[User, Depends(require_admin)],
@@ -208,15 +184,10 @@ async def get_operator_training_results(
     del admin
     await _require_operator_target(session, operator_id)
     results = await TrainingInsightsService(session).list_results(operator_id)
-    return TrainingResultListResponse(
-        items=[TrainingResultResponse.model_validate(item) for item in results]
-    )
+    return TrainingResultListResponse(items=[TrainingResultResponse.model_validate(item) for item in results])
 
 
-@router.get(
-    "/operators/{operator_id}/skill-profile",
-    response_model=SkillProfileResponse,
-)
+@router.get("/operators/{operator_id}/skill-profile", response_model=SkillProfileResponse)
 async def get_operator_skill_profile(
     operator_id: UUID,
     admin: Annotated[User, Depends(require_admin)],
@@ -238,10 +209,7 @@ async def get_operator_skill_profile(
     )
 
 
-@router.get(
-    "/operators/{operator_id}/recommendations",
-    response_model=TrainingRecommendationsResponse,
-)
+@router.get("/operators/{operator_id}/recommendations", response_model=TrainingRecommendationsResponse)
 async def get_operator_recommendations(
     operator_id: UUID,
     admin: Annotated[User, Depends(require_admin)],
@@ -253,12 +221,5 @@ async def get_operator_recommendations(
     return TrainingRecommendationsResponse(
         operator_id=operator_id,
         source="rules",
-        items=[
-            TrainingRecommendationResponse(
-                focus=item.focus,
-                priority=item.priority,
-                reason=item.reason,
-            )
-            for item in items
-        ],
+        items=[TrainingRecommendationResponse(focus=item.focus, priority=item.priority, reason=item.reason) for item in items],
     )
