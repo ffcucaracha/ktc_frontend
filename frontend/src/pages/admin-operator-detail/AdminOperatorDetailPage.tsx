@@ -41,6 +41,7 @@ import {
 import { ApiClientError } from "../../shared/api/client";
 import { ErrorView } from "../../shared/ui/ErrorView";
 import { LoadingView } from "../../shared/ui/LoadingView";
+import { OperatorTrainingAnalytics } from "../../widgets/operator-training-analytics/OperatorTrainingAnalytics";
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof ApiClientError) {
@@ -316,6 +317,8 @@ export function AdminOperatorDetailPage(): JSX.Element {
           </>
         )}
       </Paper>
+
+      <OperatorTrainingAnalytics operatorId={resolvedOperatorId} />
 
       <ConfirmDialog
         open={confirmActiveOpen}

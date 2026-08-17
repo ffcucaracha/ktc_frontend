@@ -1,10 +1,14 @@
 import { apiRequest } from "../../../shared/api/client";
 import { getAccessToken } from "../../../shared/auth/authStore";
 import type {
+  OperatorSkillProfile,
   SessionDebrief,
   SimulationTimelineEvent,
   SimulationTimelineResponse,
   TrainingAssessment,
+  TrainingRecommendationsResponse,
+  TrainingResult,
+  TrainingResultListResponse,
 } from "./types";
 
 export async function getTrainingAssessment(sessionId: string): Promise<TrainingAssessment> {
@@ -25,6 +29,26 @@ export async function getSessionTimeline(sessionId: string): Promise<SimulationT
     { auth: true },
   );
   return response.items;
+}
+
+export async function getOperatorTrainingResults(operatorId: string): Promise<TrainingResult[]> {
+  const response = await apiRequest<TrainingResultListResponse>(
+    `/operators/${operatorId}/training-results`,
+    { auth: true },
+  );
+  return response.items;
+}
+
+export async function getOperatorSkillProfile(operatorId: string): Promise<OperatorSkillProfile> {
+  return apiRequest<OperatorSkillProfile>(`/operators/${operatorId}/skill-profile`, { auth: true });
+}
+
+export async function getOperatorRecommendations(
+  operatorId: string,
+): Promise<TrainingRecommendationsResponse> {
+  return apiRequest<TrainingRecommendationsResponse>(`/operators/${operatorId}/recommendations`, {
+    auth: true,
+  });
 }
 
 export function createTrainingEventSocket(sessionId: string): WebSocket {

@@ -84,6 +84,34 @@ export interface SimulationTimelineResponse {
   items: SimulationTimelineEvent[];
 }
 
+export interface TrainingResultListResponse {
+  items: TrainingResult[];
+}
+
+export interface OperatorSkillProfile {
+  operator_id: string;
+  assessed_sessions: number;
+  average_score: number | null;
+  average_sequence_score: number | null;
+  average_reaction_score: number | null;
+  average_safety_score: number | null;
+  error_counts: Record<string, number>;
+  weakest_skill: string | null;
+  recent_scores: number[];
+}
+
+export interface TrainingRecommendation {
+  focus: string;
+  priority: number;
+  reason: string;
+}
+
+export interface TrainingRecommendationsResponse {
+  operator_id: string;
+  source: string;
+  items: TrainingRecommendation[];
+}
+
 export type TrainingRealtimeEventType =
   | "assessment.error.detected"
   | "ai.risk.updated"
