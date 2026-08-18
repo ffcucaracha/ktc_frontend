@@ -104,13 +104,17 @@ def _average(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 1)
 
 
+def _error_type_value(value: OperatorErrorType | str) -> str:
+    return value.value if isinstance(value, OperatorErrorType) else str(value)
+
+
 def build_skill_profile(
     operator_id: UUID,
     results: list[TrainingResult],
     errors: list[OperatorError],
 ) -> SkillProfile:
     final_results = [item for item in results if item.status == "final"]
-    error_counter = Counter(item.error_type.value for item in errors)
+    error_counter = Counter(_error_type_value(item.error_type) for item in errors)
     skill_averages = {
         "sequence": _average([item.sequence_score for item in final_results]),
         "reaction": _average([item.reaction_score for item in final_results]),
