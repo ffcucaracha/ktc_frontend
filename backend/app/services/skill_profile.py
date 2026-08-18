@@ -115,10 +115,15 @@ def _equipment_id(error: OperatorError) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _penalty(error_type: OperatorErrorType) -> float:
+def _penalty(error_type: OperatorErrorType | str) -> float:
+    normalized = (
+        error_type
+        if isinstance(error_type, OperatorErrorType)
+        else OperatorErrorType(str(error_type))
+    )
     return {
         OperatorErrorType.WRONG_ACTION: 20.0,
         OperatorErrorType.WRONG_SEQUENCE: 15.0,
         OperatorErrorType.LATE_ACTION: 10.0,
         OperatorErrorType.MISSED_ACTION: 20.0,
-    }[error_type]
+    }[normalized]
