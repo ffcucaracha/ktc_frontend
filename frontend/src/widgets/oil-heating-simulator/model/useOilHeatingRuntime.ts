@@ -64,6 +64,7 @@ function normalizeError(error: unknown): string {
 export function useOilHeatingRuntime(
   sessionId: string,
   initialState: SimulationState | null,
+  enabled = true,
 ): RuntimeState & RuntimeActions {
   const queryClient = useQueryClient();
   const [state, setState] = useState<SimulationState | null>(initialState);
@@ -127,6 +128,10 @@ export function useOilHeatingRuntime(
   );
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     let ignore = false;
     const refresh = (): void => {
       void refreshSnapshot().catch(() => {
@@ -142,10 +147,13 @@ export function useOilHeatingRuntime(
       ignore = true;
       window.clearInterval(intervalId);
     };
-  }, [refreshSnapshot]);
+  }, [enabled, refreshSnapshot]);
 
   const sendPumpCommand = useCallback(
     async (equipmentId: OilPumpId, action: OilPumpAction): Promise<void> => {
+      if (!enabled) {
+        return;
+      }
       const pendingKey = `${equipmentId}:${action}`;
       if (pendingKeysRef.current.has(pendingKey)) {
         return;
@@ -185,11 +193,14 @@ export function useOilHeatingRuntime(
         addError(message);
       }
     },
-    [addError, refreshSnapshot, sessionId, state?.revision, updateCommand],
+    [addError, enabled, refreshSnapshot, sessionId, state?.revision, updateCommand],
   );
 
   const sendRegulatorCommand = useCallback(
     async (equipmentId: OilRegulatorId, value: number): Promise<void> => {
+      if (!enabled) {
+        return;
+      }
       const normalizedValue = Math.round(value);
       const pendingKey = `${equipmentId}:set`;
       if (pendingKeysRef.current.has(pendingKey)) {
@@ -230,7 +241,7 @@ export function useOilHeatingRuntime(
         addError(message);
       }
     },
-    [addError, refreshSnapshot, sessionId, state?.revision, updateCommand],
+    [addError, enabled, refreshSnapshot, sessionId, state?.revision, updateCommand],
   );
 
   const isCommandPending = useCallback(

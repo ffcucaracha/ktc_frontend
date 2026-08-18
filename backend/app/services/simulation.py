@@ -121,6 +121,7 @@ class SimulationService:
             if scenario is None:
                 raise TrainingScenarioNotFoundError
 
+        await self._fail_superseded_sessions(operator_id)
         local_session = await self._sessions.create(
             operator_id=operator_id,
             simulator_definition_id=simulator.id,
@@ -173,6 +174,28 @@ class SimulationService:
             )
         await self._session.commit()
         return local_session
+
+    async def _fail_superseded_sessions(self, operator_id: UUID) -> None:
+        unfinished = await self._sessions.list_unfinished_for_operator(operator_id)
+        if not unfinished:
+            return
+        ended_at = utc_now()
+        for previous in unfinished:
+            previous.status = SimulationSessionStatus.FAILED
+            previous.ended_at = ended_at
+            previous.error_code = "SESSION_SUPERSEDED"
+            previous.error_message = "Сессия закрыта при запуске новой тренировки"
+            await self._events.create_event(
+                session_id=previous.id,
+                event_type=SimulationTimelineEventType.SESSION_FAILED,
+                source=SimulationEventSource.SYSTEM,
+                simulation_time_ms=self._simulation_time_from_last_state(previous),
+                payload={
+                    "code": "SESSION_SUPERSEDED",
+                    "message": "Сессия закрыта при запуске новой тренировки",
+                },
+            )
+        await self._session.flush()
 
     async def get_session(self, session_id: UUID, operator_id: UUID) -> SimulationSession:
         simulation_session = await self._sessions.get_for_operator(session_id, operator_id)
