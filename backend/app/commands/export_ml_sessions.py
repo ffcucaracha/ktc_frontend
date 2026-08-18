@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
 from app.models import (
     OperatorError,
+    OperatorErrorType,
     SimulationEvent,
     SimulationSession,
     SimulationSessionStatus,
@@ -89,7 +90,7 @@ async def build_session_export(
         "errors": [
             {
                 "occurred_at_ms": item.occurred_at_ms,
-                "error_code": item.error_type.value,
+                "error_code": _error_type_value(item.error_type),
             }
             for item in errors
             if item.occurred_at_ms is not None
@@ -113,8 +114,12 @@ async def _previous_error_counts(
             SimulationSession.started_at < current.started_at,
         )
     )
-    counter = Counter(item.error_type.value for item in result.scalars())
+    counter = Counter(_error_type_value(item.error_type) for item in result.scalars())
     return dict(sorted(counter.items()))
+
+
+def _error_type_value(error_type: OperatorErrorType | str) -> str:
+    return error_type.value if isinstance(error_type, OperatorErrorType) else str(error_type)
 
 
 def normalise_snapshot(event: SimulationEvent) -> dict[str, object]:
