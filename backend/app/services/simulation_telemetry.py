@@ -28,6 +28,8 @@ class SimulationTelemetryCollector:
     """Collect simulation state on the backend while sessions are active.
 
     AI is best-effort: telemetry and operator commands remain independent from AI availability.
+    Only the newest active session per operator is polled. This prevents abandoned duplicate
+    sessions from multiplying requests to the external simulator.
     """
 
     def __init__(
@@ -69,7 +71,7 @@ class SimulationTelemetryCollector:
     async def _supervise(self) -> None:
         try:
             while True:
-                active_sessions = await self._load_active_sessions()
+                active_sessions = self._newest_per_operator(await self._load_active_sessions())
                 active_ids = {item.id for item in active_sessions}
                 for simulation_session in active_sessions:
                     if simulation_session.external_session_id is None:
@@ -93,6 +95,13 @@ class SimulationTelemetryCollector:
     async def _load_active_sessions(self) -> list[SimulationSession]:
         async with self._session_factory() as session:
             return await SimulationSessionRepository(session).list_active()
+
+    @staticmethod
+    def _newest_per_operator(sessions: list[SimulationSession]) -> list[SimulationSession]:
+        newest: dict[UUID, SimulationSession] = {}
+        for simulation_session in sessions:
+            newest[simulation_session.operator_id] = simulation_session
+        return list(newest.values())
 
     def _start_session_task(self, simulation_session: SimulationSession) -> None:
         task = asyncio.create_task(

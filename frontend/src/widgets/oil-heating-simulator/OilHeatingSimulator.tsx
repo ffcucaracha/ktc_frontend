@@ -34,7 +34,8 @@ export function OilHeatingSimulator({
   onStop,
   stopping,
 }: OilHeatingSimulatorProps): JSX.Element {
-  const runtime = useOilHeatingRuntime(session.id, initialState);
+  const runtimeEnabled = session.status === "active" && !stopping;
+  const runtime = useOilHeatingRuntime(session.id, initialState, runtimeEnabled);
   const isTrainingMode = session.mode === "training";
 
   return (
@@ -56,7 +57,12 @@ export function OilHeatingSimulator({
             <Chip label={`Revision: ${runtime.state?.revision ?? "нет данных"}`} />
           </Stack>
         </Box>
-        <Button variant="outlined" color="error" onClick={onStop} disabled={stopping}>
+        <Button
+          variant="outlined"
+          color="error"
+          onClick={onStop}
+          disabled={stopping || session.status !== "active"}
+        >
           {stopping ? "Завершаем" : "Завершить сессию"}
         </Button>
       </Stack>

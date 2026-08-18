@@ -76,6 +76,23 @@ class SimulationSessionRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_unfinished_for_operator(self, operator_id: UUID) -> list[SimulationSession]:
+        result = await self._session.execute(
+            select(SimulationSession)
+            .where(
+                SimulationSession.operator_id == operator_id,
+                SimulationSession.status.in_(
+                    (
+                        SimulationSessionStatus.CREATING,
+                        SimulationSessionStatus.ACTIVE,
+                        SimulationSessionStatus.STOPPING,
+                    )
+                ),
+            )
+            .order_by(SimulationSession.started_at.asc(), SimulationSession.created_at.asc()),
+        )
+        return list(result.scalars())
+
     async def list_active(self) -> list[SimulationSession]:
         result = await self._session.execute(
             select(SimulationSession)
