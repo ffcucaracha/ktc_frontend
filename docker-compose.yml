@@ -13,7 +13,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trainer} -d ${POSTGRES_DB:-trainer}"]
-      interval: 5s
+      interval: 10s
       timeout: 3s
       retries: 10
 
@@ -50,9 +50,10 @@ services:
       test:
         - CMD-SHELL
         - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"
-      interval: 5s
+      interval: 30s
       timeout: 3s
-      retries: 20
+      retries: 5
+      start_period: 10s
 
   frontend:
     build:
@@ -69,9 +70,10 @@ services:
       test:
         - CMD-SHELL
         - node -e "fetch('http://127.0.0.1:5173').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-      interval: 5s
+      interval: 30s
       timeout: 3s
-      retries: 20
+      retries: 5
+      start_period: 10s
 
   ktc-backend:
     build:
@@ -85,7 +87,7 @@ services:
     build:
       context: ./ai-service
     extra_hosts:
-        - "host.docker.internal:host-gateway"
+      - "host.docker.internal:host-gateway"
     environment:
       AI_RISK_MODEL_PATH: ${AI_RISK_MODEL_PATH:-/app/models/risk-catboost-v1.cbm}
       AI_RISK_MODEL_METADATA_PATH: ${AI_RISK_MODEL_METADATA_PATH:-/app/models/risk-catboost-v1.json}
@@ -104,9 +106,10 @@ services:
       test:
         - CMD-SHELL
         - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=3)"
-      interval: 5s
+      interval: 30s
       timeout: 3s
-      retries: 20
+      retries: 5
+      start_period: 10s
 
 volumes:
   postgres-data:

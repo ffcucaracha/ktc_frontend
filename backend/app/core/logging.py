@@ -4,6 +4,17 @@ from datetime import UTC, datetime
 from typing import override
 
 
+class HealthcheckAccessFilter(logging.Filter):
+    """Hide successful healthcheck access-log noise while keeping other requests visible."""
+
+    HEALTH_PATHS = ("/health", "/health/ready")
+
+    @override
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        return not any(f'GET {path} ' in message for path in self.HEALTH_PATHS)
+
+
 class JsonFormatter(logging.Formatter):
     @override
     def format(self, record: logging.LogRecord) -> str:
@@ -26,3 +37,5 @@ def configure_logging(level: str) -> None:
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level.upper())
+
+    logging.getLogger("uvicorn.access").addFilter(HealthcheckAccessFilter())
