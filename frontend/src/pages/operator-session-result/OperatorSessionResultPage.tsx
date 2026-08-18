@@ -34,6 +34,12 @@ interface MetricCardProps {
   helper?: string;
 }
 
+interface PredictionLeadSummary {
+  count: number;
+  maxRisk: number | null;
+  leadMs: number | null;
+}
+
 function MetricCard({ label, value, helper }: MetricCardProps): JSX.Element {
   return (
     <Paper elevation={0} sx={{ border: "1px solid", borderColor: "divider", p: 2 }}>
@@ -46,22 +52,60 @@ function MetricCard({ label, value, helper }: MetricCardProps): JSX.Element {
   );
 }
 
-function predictionLeadCount(timeline: SimulationTimelineEvent[], errors: OperatorError[]): number {
+function predictionLeadSummary(
+  timeline: SimulationTimelineEvent[],
+  errors: OperatorError[],
+): PredictionLeadSummary {
   const predictions = timeline
     .filter((event) => event.event_type === "ai.risk.updated" && event.simulation_time_ms !== null)
     .map((event) => ({
       time: event.simulation_time_ms as number,
       risk: typeof event.payload.risk === "number" ? event.payload.risk : 0,
-      horizonSeconds: typeof event.payload.horizon_seconds === "number" ? event.payload.horizon_seconds : 10,
-    }));
+      predictedErrorCode:
+        typeof event.payload.predicted_error_code === "string"
+          ? event.payload.predicted_error_code
+          : null,
+      horizonSeconds:
+        typeof event.payload.horizon_seconds === "number" ? event.payload.horizon_seconds : 10,
+    }))
+    .filter((prediction) => prediction.predictedErrorCode !== null);
 
-  return errors.filter((error) => {
-    if (error.occurred_at_ms === null) return false;
-    return predictions.some((prediction) => {
-      const delta = error.occurred_at_ms as number - prediction.time;
-      return prediction.risk >= 0.5 && delta >= 0 && delta <= prediction.horizonSeconds * 1000;
-    });
-  }).length;
+  const matches = errors.flatMap((error) => {
+    if (error.occurred_at_ms === null) return [];
+    return predictions
+      .map((prediction) => ({
+        risk: prediction.risk,
+        leadMs: (error.occurred_at_ms as number) - prediction.time,
+        horizonMs: prediction.horizonSeconds * 1000,
+      }))
+      .filter((match) => match.leadMs >= 0 && match.leadMs <= match.horizonMs);
+  });
+
+  const predictedErrorIds = new Set(
+    errors
+      .filter((error) => {
+        if (error.occurred_at_ms === null) return false;
+        return predictions.some((prediction) => {
+          const delta = (error.occurred_at_ms as number) - prediction.time;
+          return delta >= 0 && delta <= prediction.horizonSeconds * 1000;
+        });
+      })
+      .map((error) => error.id),
+  );
+
+  if (matches.length === 0) {
+    return { count: 0, maxRisk: null, leadMs: null };
+  }
+
+  const strongest = matches.reduce((best, current) =>
+    current.risk > best.risk ? current : best,
+  );
+
+  return {
+    count: predictedErrorIds.size,
+    maxRisk: strongest.risk,
+    leadMs: strongest.leadMs,
+  };
 }
 
 export function OperatorSessionResultPage(): JSX.Element {
@@ -118,7 +162,7 @@ export function OperatorSessionResultPage(): JSX.Element {
   const errors = assessment.errors;
   const timeline = timelineQuery.data;
   const debrief = debriefQuery.data;
-  const predictedBeforeError = predictionLeadCount(timeline, errors);
+  const predictionSummary = predictionLeadSummary(timeline, errors);
   const scorePercent = result.max_score <= 0 ? 0 : Math.max(0, Math.min(100, (result.score / result.max_score) * 100));
   const nextTraining = debrief.recommendations[0] ?? "Закрепить результат повторным прохождением сценария.";
   const recommendedScenarioPath = debrief.recommended_scenario_code === null
@@ -147,6 +191,21 @@ export function OperatorSessionResultPage(): JSX.Element {
         </Alert>
       ) : null}
 
+      {predictionSummary.count > 0 ? (
+        <Alert severity="warning">
+          <Typography variant="subtitle2">AI предупредил заранее</Typography>
+          <Typography variant="body2">
+            Перед {predictionSummary.count} из {result.error_count} ошибок модель заранее отметила повышенный риск.
+            {predictionSummary.maxRisk === null
+              ? ""
+              : ` Максимальный риск составил ${Math.round(predictionSummary.maxRisk * 100)}%.`}
+            {predictionSummary.leadMs === null
+              ? ""
+              : ` Предупреждение появилось за ${formatDurationMs(predictionSummary.leadMs)} до фактической ошибки.`}
+          </Typography>
+        </Alert>
+      ) : null}
+
       <Paper elevation={0} sx={{ border: "1px solid", borderColor: "divider", p: 2.5 }}>
         <Stack spacing={1}>
           <Stack direction="row" justifyContent="space-between" alignItems="baseline">
@@ -164,8 +223,8 @@ export function OperatorSessionResultPage(): JSX.Element {
         <MetricCard label="Среднее время реакции" value={formatDurationMs(result.reaction_time_ms)} />
         <MetricCard
           label="Риск замечен заранее"
-          value={`${predictedBeforeError} из ${result.error_count}`}
-          helper="ML-прогноз ≥ 50% в пределах своего горизонта до ошибки"
+          value={`${predictionSummary.count} из ${result.error_count}`}
+          helper="ML-предупреждение сработало до ошибки в пределах горизонта модели"
         />
       </Box>
 
@@ -178,7 +237,7 @@ export function OperatorSessionResultPage(): JSX.Element {
       <Box>
         <Typography variant="h5" sx={{ mb: 1.5 }}>Timeline ключевых событий</Typography>
         <Alert severity="info" sx={{ mb: 2 }}>
-          Прогнозы ML и фактические ошибки показаны на одной временной шкале. Это позволяет увидеть, появился ли риск до совершения ошибки.
+          Прогнозы ML и фактические ошибки показаны на одной временной шкале. Сработавшее предупреждение отмечено отдельно как «AI предупредил».
         </Alert>
         <TrainingTimeline timeline={timeline} errors={errors} />
       </Box>

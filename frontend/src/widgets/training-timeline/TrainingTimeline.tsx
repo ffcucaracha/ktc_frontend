@@ -13,7 +13,7 @@ interface TrainingTimelineProps {
 }
 
 function chipLabel(item: ResultTimelineItem): string {
-  if (item.kind === "risk") return "ML риск";
+  if (item.kind === "risk") return item.predictionTriggered ? "AI предупредил" : "ML риск";
   if (item.kind === "error") return "Ошибка";
   if (item.kind === "action") return "Действие";
   if (item.kind === "alarm") return "Сигнал";
@@ -24,8 +24,7 @@ function chipLabel(item: ResultTimelineItem): string {
 function chipColor(item: ResultTimelineItem): "default" | "error" | "warning" | "info" | "success" {
   if (item.kind === "error") return "error";
   if (item.kind === "risk") {
-    if ((item.risk ?? 0) >= 0.7) return "error";
-    if ((item.risk ?? 0) >= 0.5) return "warning";
+    if (item.predictionTriggered) return (item.risk ?? 0) >= 0.7 ? "error" : "warning";
     return "info";
   }
   if (item.kind === "alarm") return "warning";
@@ -53,7 +52,7 @@ export function TrainingTimeline({ timeline, errors }: TrainingTimelineProps): J
           elevation={0}
           sx={{
             border: "1px solid",
-            borderColor: item.kind === "error" ? "error.light" : "divider",
+            borderColor: item.kind === "error" ? "error.light" : item.predictionTriggered ? "warning.light" : "divider",
             p: 1.5,
           }}
         >

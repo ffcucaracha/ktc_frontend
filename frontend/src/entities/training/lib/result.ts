@@ -12,6 +12,7 @@ export interface ResultTimelineItem {
   title: string;
   detail: string;
   risk?: number;
+  predictionTriggered?: boolean;
 }
 
 const errorLabels: Record<OperatorErrorType, string> = {
@@ -129,8 +130,9 @@ export function buildResultTimelineItems(
         simulationTimeMs: event.simulation_time_ms,
         createdAt: event.created_at,
         title: `Прогноз риска: ${Math.round(Math.max(0, Math.min(1, risk)) * 100)}%`,
-        detail: predicted === null ? "Тип ошибки не прогнозировался." : `Прогноз: ${predicted}.`,
+        detail: predicted === null ? "Тип ошибки не прогнозировался." : "AI предупредил о риске ошибки в ближайшие 10 секунд.",
         risk,
+        predictionTriggered: predicted !== null,
       });
       continue;
     }

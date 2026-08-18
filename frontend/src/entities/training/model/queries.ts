@@ -19,6 +19,9 @@ import type {
 
 export const trainingQueryKey = ["training"] as const;
 
+const RESULT_READINESS_RETRY_COUNT = 20;
+const RESULT_READINESS_RETRY_DELAY_MS = 500;
+
 export function useTrainingAssessmentQuery(
   sessionId: string,
   enabled = true,
@@ -27,6 +30,8 @@ export function useTrainingAssessmentQuery(
     queryKey: [...trainingQueryKey, sessionId, "assessment"],
     queryFn: () => getTrainingAssessment(sessionId),
     enabled: enabled && sessionId.length > 0,
+    retry: RESULT_READINESS_RETRY_COUNT,
+    retryDelay: RESULT_READINESS_RETRY_DELAY_MS,
   });
 }
 
@@ -38,6 +43,8 @@ export function useSessionDebriefQuery(
     queryKey: [...trainingQueryKey, sessionId, "debrief"],
     queryFn: () => getSessionDebrief(sessionId),
     enabled: enabled && sessionId.length > 0,
+    retry: RESULT_READINESS_RETRY_COUNT,
+    retryDelay: RESULT_READINESS_RETRY_DELAY_MS,
   });
 }
 
