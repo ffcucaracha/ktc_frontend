@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import require_admin, require_operator
+from app.api.dependencies import current_user, require_admin, require_operator
 from app.api.errors import ApiError
 from app.core.config import Settings, get_settings
 from app.db.session import get_session
@@ -184,10 +184,13 @@ async def get_session_debrief(
 @router.get("/operators/{operator_id}/training-results", response_model=TrainingResultListResponse)
 async def get_operator_training_results(
     operator_id: UUID,
-    admin: Annotated[User, Depends(require_admin)],
+    requester: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TrainingResultListResponse:
-    del admin
+    if requester.role == UserRole.OPERATOR and requester.id != operator_id:
+        raise ApiError(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "Недостаточно прав")
+    if requester.role not in {UserRole.ADMIN, UserRole.OPERATOR}:
+        raise ApiError(status.HTTP_403_FORBIDDEN, "FORBIDDEN", "Недостаточно прав")
     await _require_operator_target(session, operator_id)
     results = await TrainingInsightsService(session).list_results(operator_id)
     return TrainingResultListResponse(items=[TrainingResultResponse.model_validate(item) for item in results])
