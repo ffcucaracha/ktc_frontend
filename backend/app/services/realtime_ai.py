@@ -14,6 +14,7 @@ from app.integrations.ai.dto import (
     TelemetryPoint,
 )
 from app.models import (
+    OperatorErrorType,
     SimulationEvent,
     SimulationEventSource,
     SimulationSessionStatus,
@@ -112,7 +113,7 @@ class RealtimeAIService:
             for error in await self._assessment.list_errors_for_operator(operator_id)
             if error.session_id != session_id
         ]
-        previous_errors = Counter(error.error_type.value for error in historical_errors)
+        previous_errors = Counter(_error_type_value(error.error_type) for error in historical_errors)
 
         prediction = await self._gateway.predict_risk(
             RiskPredictionRequest(
@@ -135,6 +136,10 @@ class RealtimeAIService:
         )
         await self._session.commit()
         return prediction
+
+
+def _error_type_value(error_type: OperatorErrorType | str) -> str:
+    return error_type.value if isinstance(error_type, OperatorErrorType) else str(error_type)
 
 
 def _telemetry_point(event: SimulationEvent) -> TelemetryPoint | None:
