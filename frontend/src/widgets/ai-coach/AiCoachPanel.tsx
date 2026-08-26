@@ -38,12 +38,14 @@ function parseRiskPrediction(event: MessageEvent<string>): RiskPrediction | null
     ) {
       return null;
     }
+    const threshold = data.decision_threshold;
     return {
       risk: data.risk,
       predicted_error_code:
         typeof data.predicted_error_code === "string" ? data.predicted_error_code : null,
       horizon_seconds: data.horizon_seconds,
       model_version: data.model_version,
+      decision_threshold: typeof threshold === "number" ? threshold : null,
       features: Array.isArray(data.features)
         ? data.features.filter(
             (item): item is { name: string; importance: number } =>
@@ -183,7 +185,7 @@ export function AiCoachPanel({ sessionId }: AiCoachPanelProps): JSX.Element {
               <LinearProgress
                 variant="determinate"
                 value={Math.max(0, Math.min(100, message.risk * 100))}
-                color={message.risk >= 0.7 ? "error" : message.risk >= 0.5 ? "warning" : "success"}
+                color={message.elevated ? "warning" : "success"}
                 sx={{ mt: 1, height: 8, borderRadius: 999 }}
               />
             </Box>
