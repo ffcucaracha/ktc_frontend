@@ -47,6 +47,7 @@ class RiskPredictor:
                 predicted_error_code=None,
                 horizon_seconds=HORIZON_SECONDS,
                 model_version=MODEL_UNAVAILABLE_VERSION,
+                decision_threshold=None,
                 features=[],
             )
 
@@ -63,6 +64,7 @@ class RiskPredictor:
             ),
             horizon_seconds=HORIZON_SECONDS,
             model_version=loaded.version,
+            decision_threshold=loaded.threshold,
             features=[FeatureImportance(name=name, importance=value) for name, value in ranked],
         )
 
