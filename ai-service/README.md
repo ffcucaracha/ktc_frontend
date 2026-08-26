@@ -261,6 +261,12 @@ risk-catboost-v2.cbm + risk-catboost-v2.json
 cd backend
 python -m app.commands.export_ml_sessions --output /tmp/session_exports.jsonl
 ```
+или
+```bash
+docker compose exec backend \
+  python -m app.commands.export_ml_sessions \
+  --output /tmp/session_exports.jsonl
+```
 
 Экспорт должен содержать snapshots, operator actions, фактические assessment errors, scenario code и **исторический** профиль ошибок, рассчитанный только по предыдущим сессиям.
 
@@ -270,7 +276,20 @@ python -m app.commands.export_ml_sessions --output /tmp/session_exports.jsonl
 cd ../ai-service
 python -m scripts.generate_dataset /tmp/session_exports.jsonl datasets/risk.csv
 ```
+или
+```bash
+docker compose cp \
+  backend:/tmp/session_exports.jsonl \
+  ./ai-service/datasets/session_exports.jsonl
 
+docker compose run --rm \
+  -v "$PWD/ai-service:/workspace" \
+  -w /workspace \
+  ai-service \
+  python -m scripts.generate_dataset \
+  datasets/session_exports.jsonl \
+  datasets/risk.csv
+```
 Каждая строка соответствует prediction point. Target равен 1, если ошибка происходит в интервале `(now, now + 10s]`.
 
 ### 3. Training
@@ -278,6 +297,15 @@ python -m scripts.generate_dataset /tmp/session_exports.jsonl datasets/risk.csv
 ```bash
 python -m scripts.train_risk_model datasets/risk.csv
 ```
+или
+```bash
+docker compose run --rm \
+  -v "$PWD/ai-service:/workspace" \
+  -w /workspace \
+  ai-service \
+  python -m scripts.train_risk_model \
+  datasets/risk.csv
+```  
 
 Trainer разделяет данные по `session_id`, чтобы строки одной сессии не оказались одновременно в train и validation.
 
