@@ -71,8 +71,8 @@ def main() -> None:
     parser.add_argument("dataset", type=Path)
     parser.add_argument("--model", type=Path, default=Path("models/risk-catboost-v2.cbm"))
     parser.add_argument("--metadata", type=Path, default=Path("models/risk-catboost-v2.json"))
-    parser.add_argument("--iterations", type=int, default=300)
-    parser.add_argument("--threshold", type=float, default=0.5)
+    parser.add_argument("--iterations", type=int, default=100)
+    parser.add_argument("--threshold", type=float, default=0.2)
     args = parser.parse_args()
 
     rows = load_dataset(args.dataset)
@@ -87,18 +87,20 @@ def main() -> None:
 
     model = CatBoostClassifier(
         iterations=args.iterations,
-        depth=6,
-        learning_rate=0.05,
+        depth=5,
+        learning_rate=0.03,
         loss_function="Logloss",
         eval_metric="AUC",
         random_seed=21,
         verbose=False,
         allow_writing_files=False,
+        use_best_model=False,
+        l2_leaf_reg=5,
+        random_strength=1
     )
     fit_kwargs = {}
     if validation_rows and len(set(y_validation)) > 1:
         fit_kwargs["eval_set"] = (x_validation, y_validation)
-        fit_kwargs["early_stopping_rounds"] = 50
     model.fit(x_train, y_train, **fit_kwargs)
 
     args.model.parent.mkdir(parents=True, exist_ok=True)
