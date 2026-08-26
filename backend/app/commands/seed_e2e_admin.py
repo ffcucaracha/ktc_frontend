@@ -14,6 +14,19 @@ DEFAULT_E2E_ADMIN_PASSWORD = "change-me-e2e-admin-password"
 DEFAULT_E2E_OPERATOR_USERNAME = "e2e-operator"
 DEFAULT_E2E_OPERATOR_FULL_NAME = "E2E Operator"
 DEFAULT_E2E_OPERATOR_PASSWORD = "change-me-e2e-operator-password"
+DEFAULT_E2E_OPERATOR_COUNT = 5
+
+
+def _operator_username(base_username: str, index: int) -> str:
+    if index == 1:
+        return base_username
+    return f"{base_username}-{index:02d}"
+
+
+def _operator_full_name(base_full_name: str, index: int) -> str:
+    if index == 1:
+        return base_full_name
+    return f"{base_full_name} {index:02d}"
 
 
 async def seed_e2e_admin(
@@ -71,8 +84,9 @@ async def run() -> None:
     admin_username = os.getenv("E2E_ADMIN_USERNAME", DEFAULT_E2E_ADMIN_USERNAME)
     admin_full_name = os.getenv("E2E_ADMIN_FULL_NAME", DEFAULT_E2E_ADMIN_FULL_NAME)
     operator_password = os.getenv("E2E_OPERATOR_PASSWORD", DEFAULT_E2E_OPERATOR_PASSWORD)
-    operator_username = os.getenv("E2E_OPERATOR_USERNAME", DEFAULT_E2E_OPERATOR_USERNAME)
-    operator_full_name = os.getenv("E2E_OPERATOR_FULL_NAME", DEFAULT_E2E_OPERATOR_FULL_NAME)
+    operator_base_username = os.getenv("E2E_OPERATOR_USERNAME", DEFAULT_E2E_OPERATOR_USERNAME)
+    operator_base_full_name = os.getenv("E2E_OPERATOR_FULL_NAME", DEFAULT_E2E_OPERATOR_FULL_NAME)
+    operator_count = max(1, int(os.getenv("E2E_OPERATOR_COUNT", str(DEFAULT_E2E_OPERATOR_COUNT))))
 
     admin = await seed_e2e_admin(
         session_factory=AsyncSessionLocal,
@@ -80,13 +94,24 @@ async def run() -> None:
         full_name=admin_full_name,
         password=admin_password,
     )
-    operator = await seed_e2e_operator(
-        session_factory=AsyncSessionLocal,
-        username=operator_username,
-        full_name=operator_full_name,
-        password=operator_password,
-    )
-    print(f"E2E users are ready: {admin.username}, {operator.username}")
+
+    operators: list[User] = []
+    for index in range(1, operator_count + 1):
+        # Preserve the legacy e2e-operator account as operator #1 so Selenium smoke tests
+        # and manual demo logins keep working. Additional operators get stable suffixes.
+        username = _operator_username(operator_base_username, index)
+        full_name = _operator_full_name(operator_base_full_name, index)
+        operators.append(
+            await seed_e2e_operator(
+                session_factory=AsyncSessionLocal,
+                username=username,
+                full_name=full_name,
+                password=operator_password,
+            )
+        )
+
+    usernames = ", ".join(item.username for item in operators)
+    print(f"E2E users are ready: admin={admin.username}; operators={usernames}")
 
 
 def main() -> None:
