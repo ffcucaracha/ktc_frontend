@@ -38,6 +38,7 @@ describe("AiCoachPanel", () => {
               predicted_error_code: "LATE_ACTION",
               horizon_seconds: 10,
               model_version: "risk-catboost-v1",
+              decision_threshold: 0.2,
               features: [{ name: "pressure_delta_10s", importance: 0.31 }],
             },
           }),
@@ -48,7 +49,34 @@ describe("AiCoachPanel", () => {
     expect(screen.getByText("подключён")).toBeInTheDocument();
     expect(screen.getByText("82%")).toBeInTheDocument();
     expect(screen.getByText("Прогноз: LATE_ACTION")).toBeInTheDocument();
+    expect(screen.getByText(/Повышенный риск ошибки/u)).toBeInTheDocument();
     expect(screen.getByText(/изменение давления за 10 с/u)).toBeInTheDocument();
+  });
+
+  it("uses the model decision threshold instead of a hardcoded 50 percent", () => {
+    render(<AiCoachPanel sessionId="session-threshold" />);
+
+    act(() => {
+      socket.onopen?.(new Event("open"));
+      socket.onmessage?.(
+        new MessageEvent<string>("message", {
+          data: JSON.stringify({
+            type: "ai.risk.updated",
+            data: {
+              risk: 0.23,
+              predicted_error_code: "ERROR_IN_NEXT_10_SECONDS",
+              horizon_seconds: 10,
+              model_version: "risk-catboost-v2",
+              decision_threshold: 0.2,
+              features: [{ name: "time_since_last_action_s", importance: 0.15 }],
+            },
+          }),
+        }),
+      );
+    });
+
+    expect(screen.getByText("Повышенный риск ошибки: 23%")).toBeInTheDocument();
+    expect(screen.getByText("Прогноз: ERROR_IN_NEXT_10_SECONDS")).toBeInTheDocument();
   });
 
   it("shows fail-open state when AI websocket is unavailable", () => {
