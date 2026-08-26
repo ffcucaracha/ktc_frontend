@@ -3,6 +3,7 @@ import { Navigate, RouterProvider, createBrowserRouter } from "react-router-dom"
 
 import { useCurrentUserQuery } from "../features/auth/model/queries";
 import { homePathForRole } from "../features/auth/lib/routes";
+import { AdminAiModelsPage } from "../pages/admin-ai-models/AdminAiModelsPage";
 import { AdminOperatorsPage } from "../pages/admin-operators/AdminOperatorsPage";
 import { AdminOperatorDetailPage } from "../pages/admin-operator-detail/AdminOperatorDetailPage";
 import { LoginPage } from "../pages/login/LoginPage";
@@ -77,6 +78,14 @@ function createRouter() {
           element: (
             <ProtectedRoute allowedRoles={["admin"]}>
               <AdminOperatorDetailPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: "admin/ai-models",
+          element: (
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminAiModelsPage />
             </ProtectedRoute>
           ),
         },

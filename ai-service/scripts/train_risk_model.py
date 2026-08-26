@@ -41,6 +41,31 @@ def matrix(rows: list[dict[str, str]]) -> tuple[list[list[float]], list[int]]:
     return x, y
 
 
+def binary_metrics(y_true: list[int], probabilities: list[float], threshold: float) -> dict[str, float | int]:
+    predictions = [1 if value >= threshold else 0 for value in probabilities]
+    tp = sum(1 for actual, predicted in zip(y_true, predictions, strict=True) if actual == 1 and predicted == 1)
+    tn = sum(1 for actual, predicted in zip(y_true, predictions, strict=True) if actual == 0 and predicted == 0)
+    fp = sum(1 for actual, predicted in zip(y_true, predictions, strict=True) if actual == 0 and predicted == 1)
+    fn = sum(1 for actual, predicted in zip(y_true, predictions, strict=True) if actual == 1 and predicted == 0)
+    total = len(y_true)
+    accuracy = (tp + tn) / total if total else 0.0
+    precision = tp / (tp + fp) if tp + fp else 0.0
+    recall = tp / (tp + fn) if tp + fn else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    return {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "tp": tp,
+        "fp": fp,
+        "tn": tn,
+        "fn": fn,
+        "positive_rows": sum(y_true),
+        "negative_rows": total - sum(y_true),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train the binary ERROR_IN_NEXT_10_SECONDS model")
     parser.add_argument("dataset", type=Path)
@@ -80,6 +105,13 @@ def main() -> None:
     args.metadata.parent.mkdir(parents=True, exist_ok=True)
     model.save_model(str(args.model))
     importances = model.get_feature_importance()
+    validation_probabilities = (
+        [float(item[1]) for item in model.predict_proba(x_validation)] if validation_rows else []
+    )
+    validation_metrics = binary_metrics(y_validation, validation_probabilities, args.threshold)
+    session_ids = {row["session_id"] for row in rows}
+    train_session_ids = {row["session_id"] for row in train_rows}
+    validation_session_ids = {row["session_id"] for row in validation_rows}
     metadata = {
         "model_version": MODEL_VERSION,
         "target": "ERROR_IN_NEXT_10_SECONDS",
@@ -89,8 +121,14 @@ def main() -> None:
         "feature_importances": {
             name: float(value) for name, value in zip(FEATURE_NAMES, importances, strict=True)
         },
+        "dataset_path": str(args.dataset),
+        "dataset_rows": len(rows),
+        "dataset_sessions": len(session_ids),
         "training_rows": len(train_rows),
+        "training_sessions": len(train_session_ids),
         "validation_rows": len(validation_rows),
+        "validation_sessions": len(validation_session_ids),
+        "validation_metrics": validation_metrics,
         "seed": 21,
         "data_provenance": "digital-twin session exports transformed by generate_dataset.py",
     }

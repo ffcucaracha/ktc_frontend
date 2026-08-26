@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Box, Button, Container, Stack, Typography } from "@mui/material";
+import { Box, Button, Container, Stack, Tab, Tabs, Typography } from "@mui/material";
 import type { ReactNode } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { currentUserQueryKey, useCurrentUserQuery } from "../features/auth/model/queries";
 import { logout } from "../shared/api/auth";
@@ -10,8 +10,19 @@ interface AppShellProps {
   children?: ReactNode;
 }
 
+function adminTabValue(pathname: string): string | false {
+  if (pathname.startsWith("/admin/ai-models")) {
+    return "/admin/ai-models";
+  }
+  if (pathname.startsWith("/admin/operators")) {
+    return "/admin/operators";
+  }
+  return false;
+}
+
 export function AppShell({ children }: AppShellProps): JSX.Element {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const { data: user } = useCurrentUserQuery();
 
@@ -34,12 +45,13 @@ export function AppShell({ children }: AppShellProps): JSX.Element {
           bgcolor: "background.paper",
         }}
       >
-        <Container maxWidth="lg" sx={{ py: 2 }}>
+        <Container maxWidth="lg" sx={{ pt: 2 }}>
           <Stack
             alignItems={{ xs: "flex-start", sm: "center" }}
             direction={{ xs: "column", sm: "row" }}
             justifyContent="space-between"
             spacing={2}
+            sx={{ pb: user?.role === "admin" ? 1 : 2 }}
           >
             <Stack spacing={0.25}>
               <Typography component="h1" variant="h5">
@@ -57,6 +69,17 @@ export function AppShell({ children }: AppShellProps): JSX.Element {
               </Button>
             ) : null}
           </Stack>
+
+          {user?.role === "admin" ? (
+            <Tabs
+              value={adminTabValue(location.pathname)}
+              onChange={(_, value: string) => navigate(value)}
+              aria-label="Разделы кабинета администратора"
+            >
+              <Tab label="Операторы" value="/admin/operators" />
+              <Tab label="Обучение AI" value="/admin/ai-models" />
+            </Tabs>
+          ) : null}
         </Container>
       </Box>
 
