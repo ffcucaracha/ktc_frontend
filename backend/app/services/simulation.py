@@ -31,19 +31,37 @@ STEAM_SUPPLY_PUMP = "steam_supply_pump"
 STEAM_EXHAUST_PUMP = "steam_exhaust_pump"
 KTC_PUMP_H1A = "H1A"
 KTC_PUMP_H1B = "H1B"
-KTC_PUMP_H1V = "H1V"
+KTC_PUMP_H1C = "H1C"
+KTC_DOSING_ND1 = "ND1"
+KTC_PLANT = "plant"
 KTC_REGULATOR_FRC404 = "FRC404"
 KTC_REGULATOR_FRC405 = "FRC405"
 KTC_REGULATOR_FRC406 = "FRC406"
+KTC_REGULATOR_FRC407 = "FRC407"
+KTC_REGULATOR_FRC408 = "FRC408"
+KTC_DOSING_ND2 = "ND2"
+KTC_WATER_PUMP_H3 = "H3"
+KTC_E1 = "E1"
+KTC_VALVES = ("KR1", "KR2", "KR3", "KR4", "KR5", "KR6")
+KTC_ELOU_VALVES = ("KR7", "KR8")
 COMMAND_WHITELIST = {
     STEAM_SUPPLY_PUMP: {"start", "stop"},
     STEAM_EXHAUST_PUMP: {"start", "stop"},
     KTC_PUMP_H1A: {"start", "stop"},
     KTC_PUMP_H1B: {"start", "stop"},
-    KTC_PUMP_H1V: {"start", "stop"},
+    KTC_PUMP_H1C: {"start", "stop"},
+    KTC_DOSING_ND1: {"start", "stop", "set"},
+    KTC_PLANT: {"reset"},
     KTC_REGULATOR_FRC404: {"set"},
     KTC_REGULATOR_FRC405: {"set"},
     KTC_REGULATOR_FRC406: {"set"},
+    KTC_REGULATOR_FRC407: {"set"},
+    KTC_REGULATOR_FRC408: {"set"},
+    KTC_DOSING_ND2: {"start", "stop", "set"},
+    KTC_WATER_PUMP_H3: {"start", "stop"},
+    KTC_E1: {"apply_voltage"},
+    **{valve_id: {"open", "close"} for valve_id in KTC_VALVES},
+    **{valve_id: {"open", "close"} for valve_id in KTC_ELOU_VALVES},
 }
 
 

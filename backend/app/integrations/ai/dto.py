@@ -13,7 +13,10 @@ class TelemetryPoint(BaseModel):
     revision: int
     sensors: dict[str, float] = Field(default_factory=dict)
     pumps: dict[str, bool] = Field(default_factory=dict)
+    valves: dict[str, bool] = Field(default_factory=dict)
     regulators: dict[str, float | int] = Field(default_factory=dict)
+    dosing: dict[str, Any] = Field(default_factory=dict)
+    elou: dict[str, Any] = Field(default_factory=dict)
     alarms: list[dict[str, Any]] = Field(default_factory=list)
 
 

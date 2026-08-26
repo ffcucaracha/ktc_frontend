@@ -12,7 +12,14 @@ KTC_OIL_HEATING_CODE = "oil-heating-ktc"
 KTC_OIL_HEATING_EXTERNAL_ID = "ktc-oil-heating"
 KTC_OIL_HEATING_NAME = "Подогрев сырой нефти перед ЭЛОУ"
 KTC_OIL_HEATING_VISUALIZATION_TYPE = "oil-heating-v1"
-KTC_OIL_HEATING_DESCRIPTION = "Тренажёр блока подогрева нефти с подключением к ktc_backend."
+KTC_OIL_HEATING_DESCRIPTION = "Тренажёр блока подогрева нефти с подключением к ktc_backend."  # noqa: RUF001
+KTC_OIL_HEATING_ELOU_CODE = "oil-heating-elou-ktc"
+KTC_OIL_HEATING_ELOU_EXTERNAL_ID = "ktc-oil-heating-elou"
+KTC_OIL_HEATING_ELOU_NAME = "Подогрев сырой нефти + ЭЛОУ"
+KTC_OIL_HEATING_ELOU_VISUALIZATION_TYPE = "oil-heating-elou-v1"
+KTC_OIL_HEATING_ELOU_DESCRIPTION = (
+    "Комбинированный тренажёр блока подогрева и электрообессоливающей установки."
+)
 
 
 class SimulatorDefinitionRepository:
@@ -64,6 +71,28 @@ class SimulatorDefinitionRepository:
             simulator.name = KTC_OIL_HEATING_NAME
             simulator.description = KTC_OIL_HEATING_DESCRIPTION
             simulator.visualization_type = KTC_OIL_HEATING_VISUALIZATION_TYPE
+            simulator.is_active = True
+
+        await self._session.flush()
+        return simulator
+
+    async def upsert_ktc_oil_heating_elou(self) -> SimulatorDefinition:
+        simulator = await self.get_by_code(KTC_OIL_HEATING_ELOU_CODE)
+        if simulator is None:
+            simulator = SimulatorDefinition(
+                code=KTC_OIL_HEATING_ELOU_CODE,
+                external_id=KTC_OIL_HEATING_ELOU_EXTERNAL_ID,
+                name=KTC_OIL_HEATING_ELOU_NAME,
+                description=KTC_OIL_HEATING_ELOU_DESCRIPTION,
+                visualization_type=KTC_OIL_HEATING_ELOU_VISUALIZATION_TYPE,
+                is_active=True,
+            )
+            self._session.add(simulator)
+        else:
+            simulator.external_id = KTC_OIL_HEATING_ELOU_EXTERNAL_ID
+            simulator.name = KTC_OIL_HEATING_ELOU_NAME
+            simulator.description = KTC_OIL_HEATING_ELOU_DESCRIPTION
+            simulator.visualization_type = KTC_OIL_HEATING_ELOU_VISUALIZATION_TYPE
             simulator.is_active = True
 
         await self._session.flush()

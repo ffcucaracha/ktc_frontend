@@ -1,15 +1,29 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Slider, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, Slider, Stack, TextField, Typography } from "@mui/material";
 
 import type { SimulationState } from "../../entities/simulation/api/types";
-import type { OilPumpAction, OilPumpId, OilRegulatorId } from "./model/useOilHeatingRuntime";
+import type {
+  OilDosingAction,
+  OilPumpAction,
+  OilPumpId,
+  OilRegulatorId,
+  OilValveAction,
+  OilValveId,
+} from "./model/useOilHeatingRuntime";
 
 interface OilHeatingSchemeProps {
   state: SimulationState | null;
+  variant?: "heating" | "combined";
   onPumpCommand: (equipmentId: OilPumpId, action: OilPumpAction) => void;
+  onValveCommand: (equipmentId: OilValveId, action: OilValveAction) => void;
   onRegulatorCommand: (equipmentId: OilRegulatorId, value: number) => Promise<void>;
+  onDosingCommand: (action: OilDosingAction, value?: number) => Promise<void>;
+  onResetCommand: () => Promise<void>;
   isCommandPending: (equipmentId: OilPumpId, action: OilPumpAction) => boolean;
+  isValveCommandPending: (equipmentId: OilValveId, action: OilValveAction) => boolean;
   isRegulatorCommandPending: (equipmentId: OilRegulatorId) => boolean;
+  isDosingCommandPending: (action: OilDosingAction) => boolean;
+  isResetCommandPending: () => boolean;
 }
 
 interface PumpPosition {
@@ -30,8 +44,10 @@ interface RegulatorLine {
 const pumps: PumpPosition[] = [
   { id: "H1A", x: 120, y: 95, buttonLeft: "11.5%", buttonTop: "25%" },
   { id: "H1B", x: 120, y: 185, buttonLeft: "11.5%", buttonTop: "49%" },
-  { id: "H1V", x: 120, y: 275, buttonLeft: "11.5%", buttonTop: "72.5%" },
+  { id: "H1C", x: 120, y: 275, buttonLeft: "11.5%", buttonTop: "72.5%" },
 ];
+
+const valveIds: OilValveId[] = ["KR1", "KR2", "KR3", "KR4", "KR5", "KR6"];
 
 const regulatorLines: RegulatorLine[] = [
   { y: 75, id: "FRC404", label: "FRC 404", exchangers: "Т-2 ... Т-1/1" },
@@ -59,16 +75,63 @@ function processSection(state: SimulationState | null, key: string): Record<stri
   return readRecord(state?.process, key);
 }
 
+function elouSection(state: SimulationState | null): Record<string, unknown> {
+  return readRecord(state?.process, "elou");
+}
+
 function sensorValue(state: SimulationState | null, key: string): number | null {
-  return readNumber(processSection(state, "sensors")[key]);
+  return readNumber(processSection(state, "sensors_in")[key]);
+}
+
+function flowMeterValue(state: SimulationState | null, key: string): number | null {
+  return readNumber(processSection(state, "flow_meters")[key]);
+}
+
+function collectorValue(state: SimulationState | null, key: string): number | null {
+  return readNumber(processSection(state, "collector")[key]);
 }
 
 function regulatorValue(state: SimulationState | null, regulatorId: OilRegulatorId): number | null {
+  const value = processSection(state, "regulators")[regulatorId];
+  if (typeof value === "number") {
+    return value;
+  }
   return readNumber(readRecord(processSection(state, "regulators"), regulatorId).valve);
 }
 
 function outputValue(state: SimulationState | null, key: string): number | null {
-  return readNumber(processSection(state, "installation_output")[key]);
+  return readNumber(processSection(state, "output")[key]);
+}
+
+function elouNumber(state: SimulationState | null, key: string): number | null {
+  return readNumber(elouSection(state)[key]);
+}
+
+function elouBoolean(state: SimulationState | null, key: string): boolean | null {
+  const value = elouSection(state)[key];
+  return typeof value === "boolean" ? value : null;
+}
+
+function valveStatus(state: SimulationState | null, valveId: OilValveId): boolean | null {
+  const value = processSection(state, "valves")[valveId];
+  return typeof value === "boolean" ? value : null;
+}
+
+function dosingValue(state: SimulationState | null, key: string): number | null {
+  return readNumber(processSection(state, "dosing")[key]);
+}
+
+function dosingFlag(state: SimulationState | null, key: string): boolean {
+  return processSection(state, "dosing")[key] === true;
+}
+
+function errorFlag(state: SimulationState | null, key: string): boolean {
+  return processSection(state, "errors")[key] === true;
+}
+
+function stopReason(state: SimulationState | null): string | null {
+  const value = processSection(state, "errors").stop_reason;
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function formatNumber(value: number | null, digits = 1): string {
@@ -266,10 +329,17 @@ function RegulatorControl({
 
 export function OilHeatingScheme({
   state,
+  variant = "heating",
   onPumpCommand,
+  onValveCommand,
   onRegulatorCommand,
+  onDosingCommand,
+  onResetCommand,
   isCommandPending,
+  isValveCommandPending,
   isRegulatorCommandPending,
+  isDosingCommandPending,
+  isResetCommandPending,
 }: OilHeatingSchemeProps): JSX.Element {
   const [draftRegulators, setDraftRegulators] = useState<Record<OilRegulatorId, number>>({
     FRC404: 0,
@@ -281,15 +351,41 @@ export function OilHeatingScheme({
     FRC405: false,
     FRC406: false,
   });
+  const [draftNd1Flow, setDraftNd1Flow] = useState(10);
   const totalFlow = pumps.reduce((sum, pump) => sum + pumpFlow(state, pump.id), 0);
   const temperature = state?.boiler.temperature_c;
   const pressure = state?.boiler.pressure_bar;
-  const inletTemperature = sensorValue(state, "TR5K3T");
-  const density = sensorValue(state, "QR5K3D");
-  const pumpOutletFlow = sensorValue(state, "FYQR117");
-  const ktcPressure = sensorValue(state, "PRA351");
+  const inletTemperature = sensorValue(state, "TR1");
+  const density = sensorValue(state, "QR1");
+  const pumpOutletFlow = pumps.reduce((sum, pump, index) => {
+    const value = flowMeterValue(state, `FQR117_${index + 1}`);
+    return sum + (value ?? 0);
+  }, 0);
+  const ktcPressure = collectorValue(state, "PRA1");
   const outputFlow = outputValue(state, "oil_flow_exit");
+  const outletTemperature = outputValue(state, "TR2");
+  const nd1Running = state?.equipment.ND1?.status === "running";
+  const nd1Target = dosingValue(state, "ND1_target");
+  const nd1Flow = dosingValue(state, "ND1_flow");
+  const nd1Error = dosingFlag(state, "ND1_error");
+  const processStopped = errorFlag(state, "process_stopped");
+  const reason = stopReason(state);
   const rawRows = processRows(state);
+  const isCombined = variant === "combined";
+  const e1Level = elouNumber(state, "E1_level");
+  const e1FillHeight = e1Level === null ? 0 : Math.max(0, Math.min(150, e1Level * 1.5));
+  const e1Voltage = elouBoolean(state, "E1_voltage") === true;
+  const e1Ready = elouBoolean(state, "E1_ready");
+  const kr7Open = elouBoolean(state, "KR7");
+  const kr8Open = elouBoolean(state, "KR8");
+  const nd2Running = elouBoolean(state, "ND2") === true;
+  const h3Running = elouBoolean(state, "H3") === true;
+  const nd2Error = elouBoolean(state, "ND2_error") === true;
+  const frc407 = elouNumber(state, "FRC407_valve");
+  const frc408 = elouNumber(state, "FRC408_valve");
+  const waterFlow = elouNumber(state, "water_flow");
+  const elouFlow = elouNumber(state, "FQR118");
+  const po1Level = elouNumber(state, "PO1_level");
 
   useEffect(() => {
     setDraftRegulators((current) => {
@@ -303,6 +399,13 @@ export function OilHeatingScheme({
       return next;
     });
   }, [isRegulatorCommandPending, state]);
+
+  useEffect(() => {
+    const target = dosingValue(state, "ND1_target");
+    if (target !== null && !isDosingCommandPending("set")) {
+      setDraftNd1Flow(target);
+    }
+  }, [isDosingCommandPending, state]);
 
   const startEditRegulator = (equipmentId: OilRegulatorId): void => {
     dirtyRegulatorsRef.current[equipmentId] = true;
@@ -324,6 +427,19 @@ export function OilHeatingScheme({
 
   return (
     <Box>
+      {processStopped ? (
+        <Alert
+          action={
+            <Button color="inherit" disabled={isResetCommandPending()} size="small" onClick={() => void onResetCommand()}>
+              Сбросить
+            </Button>
+          }
+          severity="error"
+          sx={{ mb: 1.5 }}
+        >
+          {reason ?? "Процесс остановлен. Требуется reset_plant."}
+        </Alert>
+      ) : null}
       <Box sx={{ position: "relative" }}>
         <svg
           role="img"
@@ -334,9 +450,11 @@ export function OilHeatingScheme({
         >
           <title id="oil-heating-title">Мнемосхема подогрева сырой нефти перед ЭЛОУ</title>
           <desc id="oil-heating-desc">
-            Три сырьевых насоса, общий коллектор, регуляторы расхода и ветки теплообменников.
+            {isCombined
+              ? "Три сырьевых насоса, теплообменники, электродегидратор E1 и контур слива воды."
+              : "Три сырьевых насоса, общий коллектор, регуляторы расхода и ветки теплообменников."}
           </desc>
-          <rect x="0" y="0" width="1040" height="380" rx="8" fill="#f7faf8" />
+          <rect x="0" y="0" width="1040" height="380" rx="8" fill={isCombined ? "#f5f8fb" : "#f7faf8"} />
 
           <line x1="190" y1="185" x2="300" y2="185" stroke="#607d8b" strokeWidth="16" />
           <line x1="300" y1="75" x2="300" y2="295" stroke="#607d8b" strokeWidth="16" />
@@ -383,24 +501,88 @@ export function OilHeatingScheme({
             );
           })}
 
-          <g aria-label="Показатели коллектора">
-            <rect x="800" y="122" width="220" height="126" rx="8" fill="#ffffff" stroke="#cfd8dc" />
-            <text x="910" y="152" textAnchor="middle" fontSize="17" fill="#263238">
-              Коллектор перед ЭЛОУ
-            </text>
-            <text x="910" y="181" textAnchor="middle" fontSize="15" fill="#455a64">
-              {temperature === undefined ? "TR41-1: --" : `TR41-1: ${temperature.toFixed(1)} C`}
-            </text>
-            <text x="910" y="206" textAnchor="middle" fontSize="15" fill="#455a64">
-              {pressure === undefined ? "PRA351: --" : `PRA351: ${pressure.toFixed(1)} bar`}
-            </text>
-            <text x="910" y="230" textAnchor="middle" fontSize="13" fill="#607d8b">
-              KTC PRA351: {formatNumber(ktcPressure)} кгс/см2
-            </text>
-            <text x="910" y="246" textAnchor="middle" fontSize="13" fill="#607d8b">
-              Выход: {formatNumber(outputFlow)} м3/ч
-            </text>
-          </g>
+          {isCombined ? (
+            <g aria-label="Блок ЭЛОУ">
+              <rect x="790" y="26" width="230" height="326" rx="10" fill="#ffffff" stroke="#1565c0" strokeWidth="2" />
+              <text x="905" y="54" textAnchor="middle" fontSize="18" fontWeight="700" fill="#0d47a1">
+                ЭЛОУ E-1
+              </text>
+              <line x1="790" y1="185" x2="827" y2="185" stroke="#607d8b" strokeWidth="16" />
+              <rect x="832" y="88" width="100" height="168" rx="34" fill="#e3f2fd" stroke="#1565c0" strokeWidth="3" />
+              <rect
+                x="836"
+                y={252 - e1FillHeight}
+                width="92"
+                height={e1FillHeight}
+                rx="28"
+                fill={e1Voltage ? "#64b5f6" : "#bbdefb"}
+                opacity="0.8"
+              />
+              <line x1="852" y1="102" x2="852" y2="242" stroke={e1Voltage ? "#f9a825" : "#90a4ae"} strokeWidth="5" />
+              <line x1="912" y1="102" x2="912" y2="242" stroke={e1Voltage ? "#f9a825" : "#90a4ae"} strokeWidth="5" />
+              <text x="882" y="154" textAnchor="middle" fontSize="13" fill="#0d47a1">
+                E1 {formatNumber(e1Level, 0)}%
+              </text>
+              <text x="882" y="176" textAnchor="middle" fontSize="12" fill="#0d47a1">
+                {e1Voltage ? "напряжение подано" : "без напряжения"}
+              </text>
+              <line x1="932" y1="185" x2="1002" y2="185" stroke="#607d8b" strokeWidth="16" />
+              <line x1="882" y1="256" x2="882" y2="308" stroke="#1976d2" strokeWidth="10" />
+              <line x1="882" y1="308" x2="982" y2="308" stroke="#1976d2" strokeWidth="10" />
+              <rect x="950" y="278" width="58" height="54" rx="8" fill="#e1f5fe" stroke="#0288d1" />
+              <text x="979" y="309" textAnchor="middle" fontSize="14" fill="#01579b">
+                PO-1
+              </text>
+              <text x="979" y="326" textAnchor="middle" fontSize="11" fill="#01579b">
+                {formatNumber(po1Level, 0)}%
+              </text>
+              <line x1="932" y1="128" x2="988" y2="128" stroke="#00897b" strokeWidth="8" strokeDasharray="10 6" />
+              <text x="960" y="114" textAnchor="middle" fontSize="11" fill="#00695c">
+                FRC408 {formatNumber(frc408, 0)}%
+              </text>
+              <text x="948" y="78" fontSize="12" fill="#263238">
+                FQR118 {formatNumber(elouFlow)} м3/ч
+              </text>
+              <text x="948" y="98" fontSize="12" fill="#263238">
+                вода {formatNumber(waterFlow)} м3/ч
+              </text>
+              <text x="948" y="148" fontSize="12" fill="#263238">
+                FRC407 {formatNumber(frc407, 0)}%
+              </text>
+              <text x="948" y="168" fontSize="12" fill="#263238">
+                E1 {e1Ready === null ? "--" : e1Ready ? "готов" : "не готов"}
+              </text>
+              <text x="812" y="290" fontSize="12" fill={nd2Error ? "#b71c1c" : "#263238"}>
+                ND2 {nd2Running ? "пуск" : "стоп"}
+              </text>
+              <text x="812" y="312" fontSize="12" fill="#263238">
+                H3 {h3Running ? "пуск" : "стоп"}
+              </text>
+              <text x="812" y="334" fontSize="12" fill="#263238">
+                KR7 {kr7Open === null ? "--" : kr7Open ? "откр." : "закр."} / KR8{" "}
+                {kr8Open === null ? "--" : kr8Open ? "откр." : "закр."}
+              </text>
+            </g>
+          ) : (
+            <g aria-label="Показатели коллектора">
+              <rect x="800" y="122" width="220" height="126" rx="8" fill="#ffffff" stroke="#cfd8dc" />
+              <text x="910" y="152" textAnchor="middle" fontSize="17" fill="#263238">
+                Коллектор перед ЭЛОУ
+              </text>
+              <text x="910" y="181" textAnchor="middle" fontSize="15" fill="#455a64">
+                {temperature === undefined ? "TR2: --" : `TR2: ${temperature.toFixed(1)} C`}
+              </text>
+              <text x="910" y="206" textAnchor="middle" fontSize="15" fill="#455a64">
+                {pressure === undefined ? "PRA1: --" : `PRA1: ${pressure.toFixed(1)} bar`}
+              </text>
+              <text x="910" y="230" textAnchor="middle" fontSize="13" fill="#607d8b">
+                KTC PRA1: {formatNumber(ktcPressure)} кгс/см2
+              </text>
+              <text x="910" y="246" textAnchor="middle" fontSize="13" fill="#607d8b">
+                Выход: {formatNumber(outputFlow)} м3/ч
+              </text>
+            </g>
+          )}
         </svg>
         {pumps.map((pump) => (
           <PumpActionButton
@@ -418,9 +600,80 @@ export function OilHeatingScheme({
       <Stack spacing={1.5} sx={{ mt: 1.5 }}>
         <Typography color="text.secondary" variant="body2">
           После насосов: {formatNumber(pumpOutletFlow)} м3/ч ({totalFlow.toFixed(1)} т/ч).
-          Выход блока: {formatNumber(outputFlow)} м3/ч. Входная температура: {formatNumber(inletTemperature)} C.
+          Выход блока: {formatNumber(outputFlow)} м3/ч. TR2: {formatNumber(outletTemperature)} C.
+          Входная температура: {formatNumber(inletTemperature)} C.
           Плотность: {formatNumber(density, 3)} г/см3.
         </Typography>
+        {nd1Error ? (
+          <Alert severity="warning">Ошибка дозирования ND1: включите дозатор и задайте допустимую уставку.</Alert>
+        ) : null}
+        <Box
+          sx={{
+            display: "grid",
+            gap: 1,
+            gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", md: "repeat(6, minmax(0, 1fr))" },
+          }}
+        >
+          {valveIds.map((valveId) => {
+            const opened = valveStatus(state, valveId);
+            const action: OilValveAction = opened ? "close" : "open";
+            return (
+              <Button
+                key={valveId}
+                color={opened ? "success" : "inherit"}
+                disabled={opened === null || isValveCommandPending(valveId, action)}
+                onClick={() => onValveCommand(valveId, action)}
+                variant={opened ? "contained" : "outlined"}
+              >
+                {valveId} {opened ? "открыт" : "закрыт"}
+              </Button>
+            );
+          })}
+        </Box>
+        <Box
+          sx={{
+            alignItems: "center",
+            border: "1px solid",
+            borderColor: nd1Error ? "warning.main" : "divider",
+            borderRadius: 1,
+            display: "grid",
+            gap: 1.5,
+            gridTemplateColumns: { xs: "1fr", sm: "1fr 150px 130px 130px" },
+            p: 1.5,
+          }}
+        >
+          <Box>
+            <Typography fontWeight={700} variant="body2">
+              Дозатор ND1
+            </Typography>
+            <Typography color="text.secondary" variant="caption">
+              факт {formatNumber(nd1Flow)} г/т, уставка {formatNumber(nd1Target)} г/т
+            </Typography>
+          </Box>
+          <TextField
+            inputProps={{ min: 0, max: 100, step: 1 }}
+            label="Уставка, г/т"
+            size="small"
+            type="number"
+            value={draftNd1Flow}
+            onChange={(event) => setDraftNd1Flow(Number(event.target.value))}
+          />
+          <Button
+            disabled={state === null || isDosingCommandPending("set")}
+            onClick={() => void onDosingCommand("set", draftNd1Flow)}
+            variant="contained"
+          >
+            Задать
+          </Button>
+          <Button
+            color={nd1Running ? "error" : "success"}
+            disabled={state === null || isDosingCommandPending(nd1Running ? "stop" : "start")}
+            onClick={() => void onDosingCommand(nd1Running ? "stop" : "start")}
+            variant="outlined"
+          >
+            {nd1Running ? "Останов" : "Пуск"}
+          </Button>
+        </Box>
         <Box
           sx={{
             display: "grid",

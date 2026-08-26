@@ -53,8 +53,8 @@ risk.csv
     ↓
 train_risk_model.py
     ↓
-risk-catboost-v1.cbm
-risk-catboost-v1.json
+risk-catboost-v2.cbm
+risk-catboost-v2.json
     ↓
 ai-service
     ↓
@@ -76,7 +76,7 @@ POST /v1/predict-risk
 - итоговые ошибки assessment;
 - предыдущую историю ошибок оператора, если она доступна.
 
-Лучше собирать данные по нескольким существующим сценариям блока подогрева нефти:
+Лучше собирать данные по нескольким существующим сценариям блока подогрева нефти и полного цикла:
 
 ```text
 oil-heating-basic-startup
@@ -84,6 +84,8 @@ oil-heating-basic-shutdown
 oil-heating-flow-control
 oil-heating-wrong-sequence-training
 oil-heating-reaction-time-training
+oil-heating-elou-integrated-startup
+oil-heating-elou-drainage-control
 ```
 
 Нужны как правильные, так и ошибочные прохождения.
@@ -121,13 +123,13 @@ LATE_ACTION
 Например, вместо:
 
 ```text
-H1A → H1B → H1V
+H1A → H1B → H1C
 ```
 
 выполнить:
 
 ```text
-H1B → H1A → H1V
+H1B → H1A → H1C
 ```
 
 Assessment должен сформировать:
@@ -144,6 +146,16 @@ Assessment должен сформировать:
 
 ```text
 WRONG_ACTION
+```
+
+Для полного цикла полезны отдельные ошибки по ELOU:
+
+```text
+FRC407 вне 40-100%
+ND2 вне 40-50 г/т
+FRC408 вне 5-10%
+E1 apply_voltage до ожидаемого шага
+KR7/KR8 в неправильном порядке или пропущены
 ```
 
 ### Пропущенное действие
@@ -231,18 +243,46 @@ POST /api/v1/simulation-sessions/{session_id}/assessment
       "simulation_time_ms": 10000,
       "revision": 10,
       "sensors": {
-        "PRA351": 4.4,
-        "TR41_1": 117.5
+        "PRA1": 4.4,
+        "TR2": 117.5,
+        "FQR117_1": 120,
+        "FQR117_2": 110,
+        "FQR117_3": 100,
+        "FQR118": 250
       },
       "pumps": {
         "H1A": true,
         "H1B": false,
-        "H1V": false
+        "H1C": false,
+        "ND1": true
+      },
+      "valves": {
+        "KR1": true,
+        "KR6": true
       },
       "regulators": {
         "FRC404": 40,
         "FRC405": 0,
         "FRC406": 0
+      },
+      "dosing": {
+        "ND1_flow": 10,
+        "ND1_target": 10,
+        "ND1_error": false
+      },
+      "elou": {
+        "FRC407_valve": 80,
+        "FRC408_valve": 6,
+        "ND2": true,
+        "ND2_flow": 45,
+        "H3": true,
+        "water_flow": 12,
+        "E1_level": 42,
+        "E1_ready": true,
+        "E1_voltage": false,
+        "PO1_level": 25,
+        "KR7": false,
+        "KR8": false
       },
       "alarms": []
     }
@@ -461,10 +501,46 @@ current_temperature
 temperature_delta_10s
 pump_h1a
 pump_h1b
-pump_h1v
+pump_h1c
+pump_nd1
+pump_nd2
+pump_h3
+valve_kr1
+valve_kr6
+valve_kr7
+valve_kr8
 regulator_frc404
 regulator_frc405
 regulator_frc406
+regulator_frc407
+regulator_frc408
+nd1_flow
+nd1_target
+nd1_setpoint_error
+nd2_flow
+nd2_setpoint_error
+water_flow
+e1_level
+e1_ready
+e1_voltage
+po1_level
+combined_scenario
+recent_action_h1c
+recent_action_nd1
+recent_action_kr1
+recent_action_kr6
+recent_action_frc404
+recent_action_frc407
+recent_action_nd2
+recent_action_frc408
+recent_action_e1_voltage
+recent_action_kr7
+recent_action_kr8
+last_setpoint_nd1
+last_setpoint_frc404
+last_setpoint_frc407
+last_setpoint_nd2
+last_setpoint_frc408
 active_alarm_count
 time_since_alarm_s
 time_since_last_action_s
@@ -480,8 +556,9 @@ previous_missed_action_count
 Сейчас pressure и temperature привязаны к:
 
 ```text
-PRA351
-TR41_1
+PRA1
+TR2
+process.elou
 ```
 
 Перед первым реальным обучением нужно обязательно проверить, что эти ключи действительно стабильно присутствуют в telemetry текущего `ktc_backend` и имеют нужный смысл/единицы измерения.
@@ -563,8 +640,8 @@ python scripts/train_risk_model.py datasets/risk.csv
 По умолчанию будут созданы:
 
 ```text
-models/risk-catboost-v1.cbm
-models/risk-catboost-v1.json
+models/risk-catboost-v2.cbm
+models/risk-catboost-v2.json
 ```
 
 Можно менять параметры:
@@ -620,8 +697,8 @@ AI-service при загрузке сравнивает сохранённый �
 В `.env`:
 
 ```text
-AI_RISK_MODEL_PATH=/app/models/risk-catboost-v1.cbm
-AI_RISK_MODEL_METADATA_PATH=/app/models/risk-catboost-v1.json
+AI_RISK_MODEL_PATH=/app/models/risk-catboost-v2.cbm
+AI_RISK_MODEL_METADATA_PATH=/app/models/risk-catboost-v2.json
 ```
 
 `docker-compose.yml` монтирует:
@@ -675,13 +752,16 @@ POST /v1/predict-risk
       "simulation_time_ms": 10000,
       "revision": 10,
       "sensors": {
-        "PRA351": 4.4,
-        "TR41_1": 117.5
+        "PRA1": 4.4,
+        "TR2": 117.5,
+        "FQR117_1": 120,
+        "FQR118": 110
       },
       "pumps": {
         "H1A": true,
         "H1B": false,
-        "H1V": false
+        "H1C": false,
+        "ND1": true
       },
       "regulators": {
         "FRC404": 40,
@@ -705,7 +785,7 @@ POST /v1/predict-risk
 При загруженной модели `model_version` должен быть:
 
 ```text
-risk-catboost-v1
+risk-catboost-v2
 ```
 
 Если возвращается:
@@ -755,7 +835,7 @@ ai.risk.prediction
   "risk": 0.82,
   "predicted_error_code": "ERROR_IN_NEXT_10_SECONDS",
   "horizon_seconds": 10,
-  "model_version": "risk-catboost-v1",
+  "model_version": "risk-catboost-v2",
   "features": []
 }
 ```
@@ -901,7 +981,7 @@ created_at
 8. Проверить метрики на validation sessions.
 9. Положить `.cbm` и `.json` в `ai-service/models`.
 10. Перезапустить `ai-service`.
-11. Проверить `/v1/predict-risk` и `model_version=risk-catboost-v1`.
+11. Проверить `/v1/predict-risk` и `model_version=risk-catboost-v2`.
 12. Подключить периодический вызов `AIGateway.predict_risk()` к активной сессии.
 13. В training mode показывать предупреждение, в exam mode только логировать прогноз.
 
@@ -950,7 +1030,7 @@ MISSED_ACTION
 - обученная CatBoost-модель имеет сохранённые validation metrics;
 - `.cbm` и metadata версионированы;
 - AI-service успешно загружает модель;
-- `/v1/predict-risk` возвращает не fallback, а `risk-catboost-v1`;
+- `/v1/predict-risk` возвращает не fallback, а `risk-catboost-v2`;
 - application backend вызывает прогноз во время активной тренировки;
 - prediction сохраняется в timeline;
 - training mode может показать предупреждение;

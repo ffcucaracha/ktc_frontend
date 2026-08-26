@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,9 +10,10 @@ from typing import Any
 from app.features.risk import FEATURE_NAMES, extract_risk_features, feature_vector
 from app.schemas.contracts import FeatureImportance, RiskPrediction, RiskPredictionRequest
 
-DEFAULT_MODEL_PATH = Path(os.getenv("AI_RISK_MODEL_PATH", "/app/models/risk-catboost-v1.cbm"))
+logger = logging.getLogger(__name__)
+DEFAULT_MODEL_PATH = Path(os.getenv("AI_RISK_MODEL_PATH", "/app/models/risk-catboost-v2.cbm"))
 DEFAULT_METADATA_PATH = Path(
-    os.getenv("AI_RISK_MODEL_METADATA_PATH", "/app/models/risk-catboost-v1.json")
+    os.getenv("AI_RISK_MODEL_METADATA_PATH", "/app/models/risk-catboost-v2.json")
 )
 HORIZON_SECONDS = 10
 MODEL_UNAVAILABLE_VERSION = "risk-model-unavailable-v1"
@@ -75,7 +77,14 @@ class RiskPredictor:
 
         metadata = json.loads(self._metadata_path.read_text(encoding="utf-8"))
         if metadata.get("feature_names") != FEATURE_NAMES:
-            raise RuntimeError("Risk model feature contract does not match running AI service")
+            logger.warning(
+                "Risk model feature contract does not match running AI service; model disabled",
+                extra={
+                    "metadata_path": str(self._metadata_path),
+                    "model_path": str(self._model_path),
+                },
+            )
+            return None
 
         model = CatBoostClassifier()
         model.load_model(str(self._model_path))

@@ -7,10 +7,13 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import { useState } from "react";
 
 import type { SimulationSession, SimulationState } from "../../entities/simulation/api/types";
 import { formatSessionStatus } from "../../entities/simulation/lib/format";
+import { InstructionDialog } from "../../shared/ui/InstructionDialog";
 import { AiCoachPanel } from "../ai-coach/AiCoachPanel";
+import instructionText from "./instructions/oil-heating.md?raw";
 import { OilHeatingScheme } from "./OilHeatingScheme";
 import { useOilHeatingRuntime } from "./model/useOilHeatingRuntime";
 
@@ -37,6 +40,7 @@ export function OilHeatingSimulator({
   const runtimeEnabled = session.status === "active" && !stopping;
   const runtime = useOilHeatingRuntime(session.id, initialState, runtimeEnabled);
   const isTrainingMode = session.mode === "training";
+  const [instructionOpen, setInstructionOpen] = useState(false);
 
   return (
     <Stack spacing={3}>
@@ -57,14 +61,19 @@ export function OilHeatingSimulator({
             <Chip label={`Revision: ${runtime.state?.revision ?? "нет данных"}`} />
           </Stack>
         </Box>
-        <Button
-          variant="outlined"
-          color="error"
-          onClick={onStop}
-          disabled={stopping || session.status !== "active"}
-        >
-          {stopping ? "Завершаем" : "Завершить сессию"}
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button onClick={() => setInstructionOpen(true)} variant="outlined">
+            Инструкция
+          </Button>
+          <Button
+            color="error"
+            disabled={stopping || session.status !== "active"}
+            onClick={onStop}
+            variant="outlined"
+          >
+            {stopping ? "Завершаем" : "Завершить сессию"}
+          </Button>
+        </Stack>
       </Stack>
 
       {session.mode === "exam" ? (
@@ -91,13 +100,25 @@ export function OilHeatingSimulator({
           <OilHeatingScheme
             state={runtime.state}
             onPumpCommand={(equipmentId, action) => void runtime.sendPumpCommand(equipmentId, action)}
+            onValveCommand={(equipmentId, action) => void runtime.sendValveCommand(equipmentId, action)}
             onRegulatorCommand={runtime.sendRegulatorCommand}
+            onDosingCommand={runtime.sendDosingCommand}
+            onResetCommand={runtime.sendResetCommand}
             isCommandPending={runtime.isCommandPending}
+            isValveCommandPending={runtime.isValveCommandPending}
             isRegulatorCommandPending={runtime.isRegulatorCommandPending}
+            isDosingCommandPending={runtime.isDosingCommandPending}
+            isResetCommandPending={runtime.isResetCommandPending}
           />
         </Paper>
         {isTrainingMode ? <AiCoachPanel sessionId={session.id} /> : null}
       </Box>
+      <InstructionDialog
+        content={instructionText}
+        onClose={() => setInstructionOpen(false)}
+        open={instructionOpen}
+        title="Инструкция по тренажёру"
+      />
     </Stack>
   );
 }

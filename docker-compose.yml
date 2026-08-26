@@ -89,8 +89,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      AI_RISK_MODEL_PATH: ${AI_RISK_MODEL_PATH:-/app/models/risk-catboost-v1.cbm}
-      AI_RISK_MODEL_METADATA_PATH: ${AI_RISK_MODEL_METADATA_PATH:-/app/models/risk-catboost-v1.json}
+      AI_RISK_MODEL_PATH: ${AI_RISK_MODEL_PATH:-/app/models/risk-catboost-v2.cbm}
+      AI_RISK_MODEL_METADATA_PATH: ${AI_RISK_MODEL_METADATA_PATH:-/app/models/risk-catboost-v2.json}
       AI_LLM_MODE: ${AI_LLM_MODE:-disabled}
       AI_LLM_BASE_URL: ${AI_LLM_BASE_URL:-http://host.docker.internal:11434/v1}
       AI_LLM_MODEL: ${AI_LLM_MODEL:-qwen2.5:7b-instruct}
@@ -116,6 +116,8 @@ volumes:
 
 networks:
   default:
+    name: ${DOCKER_NETWORK_NAME:-ktc_frontend_default}
+    driver: bridge
     ipam:
       config:
         - subnet: ${DOCKER_NETWORK_SUBNET:-10.50.2.0/24}

@@ -11,7 +11,7 @@ from catboost import CatBoostClassifier
 
 from app.features.risk import FEATURE_NAMES
 
-MODEL_VERSION = "risk-catboost-v1"
+MODEL_VERSION = "risk-catboost-v2"
 TARGET = "target_error_next_10s"
 
 
@@ -44,8 +44,8 @@ def matrix(rows: list[dict[str, str]]) -> tuple[list[list[float]], list[int]]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train the binary ERROR_IN_NEXT_10_SECONDS model")
     parser.add_argument("dataset", type=Path)
-    parser.add_argument("--model", type=Path, default=Path("models/risk-catboost-v1.cbm"))
-    parser.add_argument("--metadata", type=Path, default=Path("models/risk-catboost-v1.json"))
+    parser.add_argument("--model", type=Path, default=Path("models/risk-catboost-v2.cbm"))
+    parser.add_argument("--metadata", type=Path, default=Path("models/risk-catboost-v2.json"))
     parser.add_argument("--iterations", type=int, default=300)
     parser.add_argument("--threshold", type=float, default=0.5)
     args = parser.parse_args()

@@ -11,7 +11,18 @@ import {
 import { ErrorView } from "../../shared/ui/ErrorView";
 import { LoadingView } from "../../shared/ui/LoadingView";
 import { BoilerSimulator } from "../../widgets/boiler-simulator/BoilerSimulator";
+import { OilHeatingElouSimulator } from "../../widgets/oil-heating-elou-simulator/OilHeatingElouSimulator";
 import { OilHeatingSimulator } from "../../widgets/oil-heating-simulator/OilHeatingSimulator";
+
+const oilHeatingElouVisualizationTypes = new Set([
+  "oil-heating-elou-v1",
+  "ktc-oil-heating-elou",
+]);
+
+const oilHeatingVisualizationTypes = new Set([
+  "oil-heating-v1",
+  "ktc-oil-heating",
+]);
 
 export function OperatorSessionPage(): JSX.Element {
   const { sessionId } = useParams();
@@ -66,11 +77,33 @@ export function OperatorSessionPage(): JSX.Element {
   }
 
   const simulator = simulatorQuery.data;
+  const simulatorKinds = [
+    simulator.visualization_type,
+    simulator.code,
+    simulator.external_id,
+  ];
+  const isOilHeatingElou = simulatorKinds.some((value) =>
+    oilHeatingElouVisualizationTypes.has(value),
+  );
+  const isOilHeating = simulatorKinds.some((value) =>
+    oilHeatingVisualizationTypes.has(value),
+  );
   const goToResult = (): void => {
     navigate(`/operator/sessions/${sessionQuery.data.id}/result`);
   };
   const simulatorComponent =
-    simulator.visualization_type === "oil-heating-v1" ? (
+    isOilHeatingElou ? (
+      <OilHeatingElouSimulator
+        session={sessionQuery.data}
+        initialState={stateQuery.data}
+        stopping={stopMutation.isPending}
+        onStop={() => {
+          stopMutation.mutate(sessionQuery.data.id, {
+            onSuccess: goToResult,
+          });
+        }}
+      />
+    ) : isOilHeating ? (
       <OilHeatingSimulator
         session={sessionQuery.data}
         initialState={stateQuery.data}

@@ -8,8 +8,14 @@ from app.integrations.simulation.dto import (
     SimulationEvent,
     SimulationState,
 )
-from app.integrations.simulation.ktc_gateway import KTC_EXTERNAL_SESSION_PREFIX
-from app.repositories.simulators import KTC_OIL_HEATING_EXTERNAL_ID
+from app.integrations.simulation.ktc_gateway import (
+    KTC_COMBINED_EXTERNAL_SESSION_PREFIX,
+    KTC_EXTERNAL_SESSION_PREFIX,
+)
+from app.repositories.simulators import (
+    KTC_OIL_HEATING_ELOU_EXTERNAL_ID,
+    KTC_OIL_HEATING_EXTERNAL_ID,
+)
 
 
 class RoutingSimulationGateway:
@@ -17,9 +23,11 @@ class RoutingSimulationGateway:
         self,
         default_gateway: SimulationGateway,
         ktc_gateway: SimulationGateway,
+        ktc_combined_gateway: SimulationGateway,
     ) -> None:
         self._default_gateway = default_gateway
         self._ktc_gateway = ktc_gateway
+        self._ktc_combined_gateway = ktc_combined_gateway
 
     async def create_session(
         self,
@@ -67,11 +75,15 @@ class RoutingSimulationGateway:
         )
 
     def _gateway_for_simulator_id(self, simulator_id: str) -> SimulationGateway:
+        if simulator_id == KTC_OIL_HEATING_ELOU_EXTERNAL_ID:
+            return self._ktc_combined_gateway
         if simulator_id == KTC_OIL_HEATING_EXTERNAL_ID:
             return self._ktc_gateway
         return self._default_gateway
 
     def _gateway_for_external_session_id(self, external_session_id: str) -> SimulationGateway:
+        if external_session_id.startswith(KTC_COMBINED_EXTERNAL_SESSION_PREFIX):
+            return self._ktc_combined_gateway
         if external_session_id.startswith(KTC_EXTERNAL_SESSION_PREFIX):
             return self._ktc_gateway
         return self._default_gateway

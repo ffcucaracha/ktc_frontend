@@ -111,7 +111,7 @@ export interface SimulationStateResponse {
 export interface SimulationCommandPayload {
   command_id: string;
   equipment_id: string;
-  action: "start" | "stop" | "set";
+  action: "start" | "stop" | "set" | "open" | "close" | "reset" | "apply_voltage";
   payload: Record<string, unknown>;
   expected_revision?: number;
 }

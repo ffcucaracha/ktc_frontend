@@ -34,7 +34,12 @@ def _event(
     )
 
 
-def _step(order_index: int, equipment_id: str, *, allowed_delay_ms: int = 5_000) -> ScenarioExpectedAction:
+def _step(
+    order_index: int,
+    equipment_id: str,
+    *,
+    allowed_delay_ms: int = 5_000,
+) -> ScenarioExpectedAction:
     return ScenarioExpectedAction(
         id=uuid4(),
         scenario_id=uuid4(),
@@ -61,7 +66,7 @@ def test_detects_wrong_sequence_late_action_and_missed_action() -> None:
         payload={},
         created_at=started_at,
     )
-    steps = [_step(1, "H1A"), _step(2, "H1B"), _step(3, "H1V")]
+    steps = [_step(1, "H1A"), _step(2, "H1B"), _step(3, "H1C")]
     events = [
         _event(equipment_id="H1B", action="start", offset_ms=1_000),
         _event(equipment_id="H1A", action="start", offset_ms=7_000),

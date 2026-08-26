@@ -7,7 +7,11 @@ from app.commands.create_admin import create_admin
 from app.commands.seed_e2e_admin import seed_e2e_admin, seed_e2e_operator
 from app.commands.seed_simulators import seed_simulators
 from app.models import SimulatorDefinition, User, UserRole
-from app.repositories.simulators import BOILER_DEMO_CODE, KTC_OIL_HEATING_CODE
+from app.repositories.simulators import (
+    BOILER_DEMO_CODE,
+    KTC_OIL_HEATING_CODE,
+    KTC_OIL_HEATING_ELOU_CODE,
+)
 
 
 @pytest.mark.asyncio
@@ -29,9 +33,14 @@ async def test_seed_simulators_is_idempotent(
                 SimulatorDefinition.code == KTC_OIL_HEATING_CODE,
             ),
         )
+        combined_simulator = await session.scalar(
+            select(SimulatorDefinition).where(
+                SimulatorDefinition.code == KTC_OIL_HEATING_ELOU_CODE,
+            ),
+        )
 
     assert [item.id for item in first] == [item.id for item in second]
-    assert simulator_count == 2
+    assert simulator_count == 3
     assert simulator is not None
     assert simulator.external_id == "boiler-001"
     assert simulator.visualization_type == "boiler-v1"
@@ -40,6 +49,10 @@ async def test_seed_simulators_is_idempotent(
     assert ktc_simulator.external_id == "ktc-oil-heating"
     assert ktc_simulator.visualization_type == "oil-heating-v1"
     assert ktc_simulator.is_active is True
+    assert combined_simulator is not None
+    assert combined_simulator.external_id == "ktc-oil-heating-elou"
+    assert combined_simulator.visualization_type == "oil-heating-elou-v1"
+    assert combined_simulator.is_active is True
 
 
 @pytest.mark.asyncio

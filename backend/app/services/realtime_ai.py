@@ -151,9 +151,19 @@ def _telemetry_point(event: SimulationEvent) -> TelemetryPoint | None:
 
     process = payload.get("process")
     process_map = process if isinstance(process, dict) else {}
-    sensors = _numeric_mapping(process_map.get("sensors"))
+    sensors = _merged_numeric_mapping(
+        process_map.get("sensors"),
+        process_map.get("sensors_in"),
+        process_map.get("flow_meters"),
+        process_map.get("collector"),
+        process_map.get("output"),
+        process_map.get("combined"),
+    )
     pumps = _bool_mapping(process_map.get("pumps"))
+    valves = _bool_mapping(process_map.get("valves"))
     regulators = _numeric_mapping(process_map.get("regulators"))
+    dosing = _plain_mapping(process_map.get("dosing"))
+    elou = _plain_mapping(process_map.get("elou"))
     alarms_value = payload.get("alarms")
     alarms = [item for item in alarms_value if isinstance(item, dict)] if isinstance(alarms_value, list) else []
 
@@ -162,7 +172,10 @@ def _telemetry_point(event: SimulationEvent) -> TelemetryPoint | None:
         revision=revision,
         sensors=sensors,
         pumps=pumps,
+        valves=valves,
         regulators=regulators,
+        dosing=dosing,
+        elou=elou,
         alarms=alarms,
     )
 
@@ -191,7 +204,20 @@ def _numeric_mapping(value: object) -> dict[str, float]:
     return result
 
 
+def _merged_numeric_mapping(*values: object) -> dict[str, float]:
+    result: dict[str, float] = {}
+    for value in values:
+        result.update(_numeric_mapping(value))
+    return result
+
+
 def _bool_mapping(value: object) -> dict[str, bool]:
     if not isinstance(value, dict):
         return {}
     return {key: item for key, item in value.items() if isinstance(key, str) and isinstance(item, bool)}
+
+
+def _plain_mapping(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items() if isinstance(key, str)}

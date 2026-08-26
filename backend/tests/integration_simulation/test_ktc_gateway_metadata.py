@@ -6,16 +6,38 @@ from app.integrations.simulation.ktc_gateway import KtcOilHeatingGateway
 
 def status_payload() -> dict[str, object]:
     return {
-        "pumps": {"H1A": False, "H1B": False, "H1V": False},
-        "sensors": {
-            "QR5K3D": 850.0,
+        "valves": {
+            "KR1": False,
+            "KR2": False,
+            "KR3": False,
+            "KR4": False,
+            "KR5": False,
+            "KR6": False,
+        },
+        "pumps": {"H1A": False, "H1B": False, "H1C": False, "ND1": False},
+        "sensors_in": {
+            "QR1": 0.850,
+            "TR1": 20.0,
+        },
+        "flow_meters": {
             "FQR117_1": 10.0,
-            "FQR117_2": 12.0,
-            "TR41_1": 95.0,
-            "PRA351": 1.2,
+            "FQR117_2": 0.0,
+            "FQR117_3": 12.0,
+        },
+        "collector": {
+            "TR1_collector": 95.0,
+            "PRA1": 1.2,
         },
         "regulators": {"FRC404": 0, "FRC405": 0, "FRC406": 0},
-        "installation_output": {},
+        "output": {"TR2": 95.0, "oil_flow_exit": 0.0, "KR6": False},
+        "dosing": {"ND1_flow": 0.0, "ND1_target": 0.0, "ND1_error": False},
+        "errors": {
+            "process_stopped": False,
+            "stop_reason": "",
+            "KR6_error": False,
+            "overheat_error": False,
+            "pump_broken": {"H1A": False, "H1B": False, "H1C": False},
+        },
     }
 
 
@@ -46,9 +68,9 @@ def test_fallback_revision_advances_when_dynamic_payload_changes() -> None:
     same = ktc_gateway._map_status(deepcopy(first_payload))
 
     changed_payload = deepcopy(first_payload)
-    sensors = changed_payload["sensors"]
-    assert isinstance(sensors, dict)
-    sensors["TR41_1"] = 96.5
+    output = changed_payload["output"]
+    assert isinstance(output, dict)
+    output["TR2"] = 96.5
     changed = ktc_gateway._map_status(changed_payload)
 
     assert same.revision == first.revision

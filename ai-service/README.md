@@ -137,12 +137,51 @@ pressure_delta_5s
 pressure_delta_10s
 current_temperature
 temperature_delta_10s
+oil_flow_after_pumps
+oil_flow_to_elou
+oil_elou_flow_gap
 pump_h1a
 pump_h1b
-pump_h1v
+pump_h1c
+pump_nd1
+pump_nd2
+pump_h3
+valve_kr1
+valve_kr6
+valve_kr7
+valve_kr8
 regulator_frc404
 regulator_frc405
 regulator_frc406
+regulator_frc407
+regulator_frc408
+nd1_flow
+nd1_target
+nd1_setpoint_error
+nd2_flow
+nd2_setpoint_error
+water_flow
+e1_level
+e1_ready
+e1_voltage
+po1_level
+combined_scenario
+recent_action_h1c
+recent_action_nd1
+recent_action_kr1
+recent_action_kr6
+recent_action_frc404
+recent_action_frc407
+recent_action_nd2
+recent_action_frc408
+recent_action_e1_voltage
+recent_action_kr7
+recent_action_kr8
+last_setpoint_nd1
+last_setpoint_frc404
+last_setpoint_frc407
+last_setpoint_nd2
+last_setpoint_frc408
 active_alarm_count
 time_since_alarm_s
 time_since_last_action_s
@@ -158,8 +197,10 @@ previous_missed_action_count
 Текущие sensor bindings:
 
 ```text
-pressure    → PRA351
-temperature → TR41_1
+pressure    → PRA1, fallback PRA351
+temperature → TR2, fallback TR41_1/TR1
+oil flow    → FQR117_1/FQR117_2/FQR117_3/FQR118
+ELOU        → process.elou: FRC407/FRC408/ND2/H3/E1/KR7/KR8/PO1
 ```
 
 Перед обучением на реальном KTC необходимо проверить, что актуальная версия `ktc_backend` действительно передаёт эти signals с ожидаемой семантикой и единицами.
@@ -173,8 +214,8 @@ Feature extraction строится только из информации с ti
 По умолчанию service ожидает:
 
 ```env
-AI_RISK_MODEL_PATH=/app/models/risk-catboost-v1.cbm
-AI_RISK_MODEL_METADATA_PATH=/app/models/risk-catboost-v1.json
+AI_RISK_MODEL_PATH=/app/models/risk-catboost-v2.cbm
+AI_RISK_MODEL_METADATA_PATH=/app/models/risk-catboost-v2.json
 ```
 
 Metadata фиксирует:
@@ -209,7 +250,7 @@ risk.csv
         ↓
 train_risk_model.py
         ↓
-risk-catboost-v1.cbm + risk-catboost-v1.json
+risk-catboost-v2.cbm + risk-catboost-v2.json
 ```
 
 ### 1. Экспорт сессий

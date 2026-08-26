@@ -33,7 +33,7 @@ async def test_http_ai_gateway_validates_response_contract() -> None:
                 "risk": 0.84,
                 "predicted_error_code": "LATE_ACTION",
                 "horizon_seconds": 10,
-                "model_version": "risk-catboost-v1",
+                "model_version": "risk-catboost-v2",
                 "features": [{"name": "pressure_delta_10s", "importance": 0.31}],
             },
         )

@@ -127,9 +127,20 @@ def normalise_snapshot(event: SimulationEvent) -> dict[str, object]:
     process = payload.get("process") if isinstance(payload.get("process"), dict) else {}
     raw = process.get("raw") if isinstance(process, dict) and isinstance(process.get("raw"), dict) else {}
 
-    sensors = _mapping(process, "sensors") or _mapping(raw, "sensors")
+    sensors = _merged_numeric_mapping(
+        _mapping(process, "sensors"),
+        _mapping(process, "sensors_in"),
+        _mapping(process, "flow_meters"),
+        _mapping(process, "collector"),
+        _mapping(process, "output"),
+        _mapping(process, "combined"),
+        _mapping(raw, "sensors"),
+    )
     pumps = _mapping(process, "pumps") or _mapping(raw, "pumps")
+    valves = _mapping(process, "valves") or _mapping(raw, "valves")
     regulators = _mapping(process, "regulators") or _mapping(raw, "regulators")
+    dosing = _mapping(process, "dosing") or _mapping(raw, "dosing")
+    elou = _mapping(process, "elou")
     alarms = payload.get("alarms") if isinstance(payload.get("alarms"), list) else []
 
     revision = event.revision
@@ -144,9 +155,12 @@ def normalise_snapshot(event: SimulationEvent) -> dict[str, object]:
     return {
         "simulation_time_ms": simulation_time_ms,
         "revision": revision,
-        "sensors": _numeric_mapping(sensors),
+        "sensors": sensors,
         "pumps": _boolean_mapping(pumps),
+        "valves": _boolean_mapping(valves),
         "regulators": _numeric_mapping(regulators),
+        "dosing": _json_scalar_mapping(dosing),
+        "elou": _json_scalar_mapping(elou),
         "alarms": alarms,
     }
 
@@ -177,10 +191,27 @@ def _numeric_mapping(source: dict[str, Any]) -> dict[str, float]:
     return result
 
 
+def _merged_numeric_mapping(*sources: dict[str, Any]) -> dict[str, float]:
+    result: dict[str, float] = {}
+    for source in sources:
+        result.update(_numeric_mapping(source))
+    return result
+
+
 def _boolean_mapping(source: dict[str, Any]) -> dict[str, bool]:
     result: dict[str, bool] = {}
     for key, value in source.items():
         if isinstance(value, bool):
+            result[str(key)] = value
+    return result
+
+
+def _json_scalar_mapping(source: dict[str, Any]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in source.items():
+        if isinstance(value, bool) or (
+            isinstance(value, (int, float, str)) and not isinstance(value, bool)
+        ):
             result[str(key)] = value
     return result
 
