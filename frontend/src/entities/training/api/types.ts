@@ -46,6 +46,7 @@ export interface RiskPrediction {
   predicted_error_code: string | null;
   horizon_seconds: number;
   model_version: string;
+  decision_threshold: number | null;
   features: RiskFeatureImportance[];
 }
 
@@ -56,6 +57,8 @@ export interface AICoachMessage {
   recommendation: string;
   predictedErrorCode: string | null;
   modelVersion: string;
+  decisionThreshold: number | null;
+  elevated: boolean;
   updatedAt: Date;
 }
 
