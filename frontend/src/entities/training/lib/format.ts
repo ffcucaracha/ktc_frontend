@@ -23,18 +23,18 @@ export function formatFeatureName(name: string): string {
 export function buildCoachMessage(prediction: RiskPrediction, updatedAt = new Date()): AICoachMessage {
   const topFeature = prediction.features[0];
   const riskPercent = formatRiskPercent(prediction.risk);
-  const elevated = prediction.risk >= 0.5;
+  const elevated = prediction.decision_threshold !== null
+    ? prediction.risk >= prediction.decision_threshold
+    : prediction.predicted_error_code !== null;
   const title = elevated
     ? `Повышенный риск ошибки: ${riskPercent}`
     : `Риск ошибки: ${riskPercent}`;
   const reason = topFeature === undefined
     ? "Модель не выделила доминирующий фактор риска."
     : `Наибольший вклад сейчас вносит: ${formatFeatureName(topFeature.name)}.`;
-  const recommendation = prediction.risk >= 0.7
-    ? "Сверьте текущее действие с последовательностью сценария до следующей команды."
-    : prediction.risk >= 0.5
-      ? "Контролируйте порядок действий и время реакции на следующем шаге."
-      : "Продолжайте работу по текущему сценарию без изменения технологических действий из-за AI-подсказки.";
+  const recommendation = elevated
+    ? "Контролируйте порядок действий и время реакции на следующем шаге."
+    : "Продолжайте работу по текущему сценарию без изменения технологических действий из-за AI-подсказки.";
 
   return {
     risk: prediction.risk,
@@ -43,6 +43,8 @@ export function buildCoachMessage(prediction: RiskPrediction, updatedAt = new Da
     recommendation,
     predictedErrorCode: prediction.predicted_error_code,
     modelVersion: prediction.model_version,
+    decisionThreshold: prediction.decision_threshold,
+    elevated,
     updatedAt,
   };
 }
