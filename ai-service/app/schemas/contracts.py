@@ -45,6 +45,7 @@ class RiskPrediction(BaseModel):
     predicted_error_code: str | None
     horizon_seconds: int = Field(gt=0)
     model_version: str
+    decision_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     features: list[FeatureImportance] = Field(default_factory=list)
 
 
