@@ -13,6 +13,8 @@ from app.integrations.ai.dto import (
 from app.integrations.ai.errors import AIIntegrationError
 from app.models import OperatorError, TrainingResult
 
+MAX_INLINE_ERROR_EXPLANATIONS = 3
+
 
 @dataclass(frozen=True)
 class ErrorNarrative:
@@ -87,7 +89,9 @@ class TrainingNarrativeService:
                     scenario_metadata=scenario_metadata,
                 )
             )
-            explanations = [await self._explain(item) for item in errors]
+            explanations = [
+                await self._explain(item) for item in errors[:MAX_INLINE_ERROR_EXPLANATIONS]
+            ]
         except AIIntegrationError as exc:
             return _fallback_session(
                 result,
@@ -168,7 +172,9 @@ def _fallback_session(
     return SessionNarrative(
         generated_by="rules",
         debrief_model="rules-fallback-v1",
-        headline=f"Результат {result.score:.0f}/{result.max_score:.0f}; ошибок: {result.error_count}.",
+        headline=(
+            f"Результат {result.score:.0f}/{result.max_score:.0f}; ошибок: {result.error_count}."
+        ),
         strengths=strengths,
         issues=issue_types,
         recommendations=recommendations,

@@ -1,9 +1,11 @@
 from collections.abc import Iterable
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.time import utc_now
 from app.models import OperatorError, SimulationSession, TrainingResult
 
 
@@ -75,20 +77,41 @@ class AssessmentRepository:
         status: str,
         summary: dict[str, object],
     ) -> TrainingResult:
-        result = await self.get_result(session_id)
-        if result is None:
-            result = TrainingResult(session_id=session_id, scenario_id=scenario_id)
-            self._session.add(result)
-        result.scenario_id = scenario_id
-        result.score = score
-        result.max_score = max_score
-        result.reaction_time_ms = reaction_time_ms
-        result.error_count = error_count
-        result.critical_error_count = critical_error_count
-        result.sequence_score = sequence_score
-        result.reaction_score = reaction_score
-        result.safety_score = safety_score
-        result.status = status
-        result.summary = summary
-        await self._session.flush()
-        return result
+        now = utc_now()
+        statement = insert(TrainingResult).values(
+            id=uuid4(),
+            session_id=session_id,
+            scenario_id=scenario_id,
+            score=score,
+            max_score=max_score,
+            reaction_time_ms=reaction_time_ms,
+            error_count=error_count,
+            critical_error_count=critical_error_count,
+            sequence_score=sequence_score,
+            reaction_score=reaction_score,
+            safety_score=safety_score,
+            status=status,
+            summary=summary,
+            created_at=now,
+            updated_at=now,
+        )
+        statement = statement.on_conflict_do_update(
+            index_elements=[TrainingResult.session_id],
+            set_={
+                "scenario_id": statement.excluded.scenario_id,
+                "score": statement.excluded.score,
+                "max_score": statement.excluded.max_score,
+                "reaction_time_ms": statement.excluded.reaction_time_ms,
+                "error_count": statement.excluded.error_count,
+                "critical_error_count": statement.excluded.critical_error_count,
+                "sequence_score": statement.excluded.sequence_score,
+                "reaction_score": statement.excluded.reaction_score,
+                "safety_score": statement.excluded.safety_score,
+                "status": statement.excluded.status,
+                "summary": statement.excluded.summary,
+                "updated_at": now,
+            },
+        ).returning(TrainingResult)
+
+        result = await self._session.execute(statement)
+        return result.scalar_one()
